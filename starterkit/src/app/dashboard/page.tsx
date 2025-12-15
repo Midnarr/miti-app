@@ -1,6 +1,6 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
-import CreateExpenseForm from "@/components/CreateExpenseForm";
+import Link from "next/link";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 
 export default async function DashboardPage() {
@@ -9,219 +9,95 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. Obtener PERFILES (Para traducir email -> username)
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("email, username");
-
-  const userMap: Record<string, string> = {};
-  profiles?.forEach((p) => {
-    if (p.email) userMap[p.email] = p.username || p.email;
-  });
-
-  const getDisplayName = (email: string) => {
-    if (email === user.email) return "Tú";
-    const name = userMap[email];
-    return name ? `@${name}` : email;
-  };
-
-  // 2. DEUDAS y COBROS
-  const { data: debts } = await supabase
-    .from("expenses")
-    .select("*, groups(name)") 
-    .eq("debtor_email", user.email)
-    .order("created_at", { ascending: false });
-
-  const { data: receivables } = await supabase
+  // 1. OBTENER GASTOS (Donde soy pagador O deudor)
+  const { data: expenses } = await supabase
     .from("expenses")
     .select("*, groups(name)")
-    .eq("payer_id", user.id)
-    .order("created_at", { ascending: false });
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-ES", {
-      day: '2-digit', month: 'short'
-    });
-  };
+    .or(`payer_id.eq.${user.id},debtor_email.eq.${user.email}`)
+    .order("created_at", { ascending: false })
+    .limit(20);
 
   return (
-    // Cambiamos bg-gray-50 por un fondo blanco para más limpieza
-    <div className="min-h-screen bg-white p-4 md:p-8"> 
-      <div className="max-w-5xl mx-auto space-y-8">
-        
-        {/* Título principal más oscuro */}
-        <h1 className="text-3xl font-extrabold text-gray-900">
-          Hola, <span className="text-indigo-700">{userMap[user.email!] || "Usuario"}</span> 👋
-        </h1>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          
-          {/* COLUMNA IZQUIERDA: CREAR GASTO */}
-          <div className="md:col-span-1">
-            <CreateExpenseForm />
-          </div>
-
-          {/* COLUMNA DERECHA: LISTAS */}
-          <div className="md:col-span-2 space-y-8">
-            
-            {/* --- SECCIÓN 1: DEUDAS --- */}
-            {/* Quitamos el borde naranja y usamos un fondo naranja muy suave para destacar */}
-            <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
-              <h2 className="font-bold text-xl mb-4 text-orange-800 flex items-center gap-2">
-                🔔 Tienes que pagar
-                {debts?.filter(d => d.status === 'pending').length! > 0 && (
-                  <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full animate-pulse font-bold">
-                    {debts?.filter(d => d.status === 'pending').length} nuevos
-                  </span>
-                )}
-              </h2>
-
-              {debts?.length === 0 ? (
-                // Texto de estado vacío más oscuro (gray-600)
-                <p className="text-gray-600 text-sm italic">Estás al día. ¡Genial!</p>
-              ) : (
-                <div className="space-y-4 bg-white p-4 rounded-lg border border-orange-100">
-                  {debts?.map((expense) => (
-                    <div key={expense.id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                             {/* @ts-ignore */}
-                            {expense.groups && (
-                              <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                                👥 {/* @ts-ignore */} {expense.groups.name}
-                              </span>
-                            )}
-                            {/* Descripción más oscura (gray-900) */}
-                            <p className="font-bold text-gray-900 text-lg">{expense.description}</p>
-                          </div>
-                          
-                          <div className="flex flex-wrap gap-2 text-sm mt-1 items-center">
-                            {expense.original_amount && expense.original_amount !== expense.amount ? (
-                              <>
-                                {/* Precio tachado un poco más oscuro (gray-500) */}
-                                <span className="text-gray-500 line-through text-xs">
-                                  Total: ${expense.original_amount}
-                                </span>
-                                <span className="font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded border border-orange-200">
-                                  Tu parte: ${expense.amount}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="font-bold text-gray-800 text-base">
-                                A pagar: ${expense.amount}
-                              </span>
-                            )}
-                          </div>
-
-                          {expense.receipt_url && (
-                            <a 
-                              href={expense.receipt_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs font-medium text-blue-700 hover:underline flex items-center gap-1 mt-2 bg-blue-50 w-fit px-2 py-1 rounded hover:bg-blue-100"
-                            >
-                              📎 Ver recibo
-                            </a>
-                          )}
-                        </div>
-                        {/* Fecha más oscura (gray-500) */}
-                        <p className="text-xs font-medium text-gray-500 whitespace-nowrap ml-2">{formatDate(expense.created_at)}</p>
-                      </div>
-
-                      <div className="flex justify-end mt-3">
-                        <ExpenseStatusButtons 
-                          expenseId={expense.id} 
-                          currentStatus={expense.status!} 
-                          isDebtor={true} 
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* --- SECCIÓN 2: COBROS --- */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="font-bold text-xl mb-4 text-gray-900 flex items-center gap-2">
-                💰 Te deben a ti
-              </h2>
-
-              {receivables?.length === 0 ? (
-                 // Texto de estado vacío más oscuro (gray-600)
-                <p className="text-gray-600 text-sm italic">No has creado cobros pendientes.</p>
-              ) : (
-                <div className="space-y-4">
-                  {receivables?.map((expense) => (
-                    <div key={expense.id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                             {/* @ts-ignore */}
-                            {expense.groups && (
-                              <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                                👥 {/* @ts-ignore */} {expense.groups.name}
-                              </span>
-                            )}
-                             {/* Descripción más oscura (gray-900) */}
-                            <p className="font-medium text-gray-900 text-lg">{expense.description}</p>
-                          </div>
-
-                          {/* "A: usuario" más oscuro */}
-                          <p className="text-sm text-gray-700 mb-2">
-                            A: <strong className="text-indigo-700">{getDisplayName(expense.debtor_email)}</strong>
-                          </p>
-                          
-                           <div className="flex flex-wrap gap-2 text-sm items-center">
-                            {expense.original_amount && expense.original_amount !== expense.amount ? (
-                              <>
-                                 {/* Precio tachado un poco más oscuro (gray-500) */}
-                                <span className="text-gray-500 line-through text-xs">
-                                  Total: ${expense.original_amount}
-                                </span>
-                                <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                                  Te debe: ${expense.amount}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="font-bold text-gray-800 text-base">
-                                Monto: ${expense.amount}
-                              </span>
-                            )}
-                          </div>
-
-                          {expense.receipt_url && (
-                            <a 
-                              href={expense.receipt_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs font-medium text-blue-700 hover:underline flex items-center gap-1 mt-2 bg-blue-50 w-fit px-2 py-1 rounded hover:bg-blue-100"
-                            >
-                              📎 Ver recibo
-                            </a>
-                          )}
-
-                        </div>
-
-                        <div className="flex flex-col items-end gap-3">
-                            {/* Fecha más oscura (gray-500) */}
-                            <span className="text-xs font-medium text-gray-500">{formatDate(expense.created_at)}</span>
-                           <ExpenseStatusButtons 
-                              expenseId={expense.id} 
-                              currentStatus={expense.status!} 
-                              isDebtor={false} 
-                            />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
+    <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8">
+      
+      {/* Bienvenida */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900">Hola, {user.email?.split("@")[0]} 👋</h1>
+          <p className="text-gray-500 mt-1">Aquí tienes tus últimos movimientos.</p>
         </div>
+        <Link href="/dashboard/groups" className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors shadow-sm text-sm">
+          Ver mis Grupos
+        </Link>
+      </div>
+
+      {/* LISTA DE ACTIVIDAD RECIENTE */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h2 className="font-bold text-gray-800 text-xl mb-6 border-b pb-2">Actividad Reciente</h2>
+
+        {!expenses || expenses.length === 0 ? (
+          <div className="text-center py-10 text-gray-400">
+            <p className="text-4xl mb-2">💤</p>
+            <p>Todo tranquilo por aquí.</p>
+            <p className="text-sm">No tienes deudas ni cobros pendientes.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {expenses.map((expense) => {
+              // --- LÓGICA INTELIGENTE ---
+              const isMePayer = expense.payer_id === user.id;
+              const isMeDebtor = expense.debtor_email === user.email;
+
+              // Color del borde según estado
+              let borderColor = "border-gray-100";
+              if (expense.status === 'proposed') borderColor = "border-indigo-200";
+              if (expense.status === 'pending') borderColor = "border-orange-200";
+              if (expense.status === 'paid') borderColor = "border-green-200";
+
+              return (
+                <div key={expense.id} className={`p-4 rounded-lg bg-gray-50 border-l-4 ${borderColor} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-white hover:shadow-md transition-all`}>
+                  
+                  {/* Info del Gasto */}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
+                      {/* Etiqueta del Grupo (si existe) */}
+                      {expense.groups && (expense.groups as any).name && (
+                        <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full uppercase font-bold">
+                          {(expense.groups as any).name}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mt-1">
+                      {isMePayer ? (
+                        <>Le cobraste a <span className="font-bold text-indigo-600">{expense.debtor_email}</span></>
+                      ) : (
+                        <><span className="font-bold text-indigo-600">Alguien</span> te cobró</>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(expense.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  {/* Monto y Botones */}
+                  <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                    <span className="font-bold text-xl text-gray-800">${expense.amount}</span>
+                    
+                    {/* Botones de Acción (AQUÍ ESTABA EL ERROR) */}
+                    <ExpenseStatusButtons 
+                      expenseId={expense.id}
+                      currentStatus={expense.status}
+                      isDebtor={isMeDebtor}
+                      isPayer={isMePayer} // <--- ESTO ES LO QUE FALTABA
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
