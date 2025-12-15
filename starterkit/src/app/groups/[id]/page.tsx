@@ -48,7 +48,7 @@ export default async function GroupDetailPage(props: {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <div className="flex items-center gap-3">
-             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">
+             <Link href="/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">
                ←
              </Link>
              <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
