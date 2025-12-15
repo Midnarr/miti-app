@@ -4,14 +4,14 @@ import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
-// AQUÍ ESTABA EL ERROR: Antes pedía objetos complejos, ahora acepta strings simples
+// CORRECCIÓN: 'members' ahora acepta una lista simple de emails (strings)
 export default function CreateGroupExpenseForm({
   groupId,
   members,
   currentUserEmail,
 }: {
   groupId: string;
-  members: string[]; // <--- CAMBIO CLAVE: string[]
+  members: string[]; // <--- ESTO SOLUCIONA EL ERROR ROJO
   currentUserEmail: string;
 }) {
   const router = useRouter();
@@ -25,7 +25,6 @@ export default function CreateGroupExpenseForm({
     
     const description = formData.get("description") as string;
     const amount = parseFloat(formData.get("amount") as string);
-    // const splitType = formData.get("split_type") as string; 
     const debtorEmail = formData.get("debtor_email") as string;
 
     const supabase = createClient();
@@ -36,10 +35,9 @@ export default function CreateGroupExpenseForm({
     try {
       if (!amount || amount <= 0) throw new Error("Ingresa un monto válido.");
       if (!description) throw new Error("Ingresa una descripción.");
+      if (!debtorEmail) throw new Error("Selecciona a quién cobrarle.");
 
-      // Lógica simple: Tú pagas todo, el otro te debe la mitad (o lo que sea el acuerdo)
-      // Por defecto guardamos que te deben el monto total o la mitad. 
-      // Para simplificar "dividir gastos", asumimos que si pongo $2000 y elijo a Juan, Juan me debe $1000.
+      // Lógica: Se divide a la mitad entre el pagador y el deudor
       const finalAmount = amount / 2; 
 
       const { error: insertError } = await supabase.from("expenses").insert({
@@ -47,7 +45,7 @@ export default function CreateGroupExpenseForm({
         amount: finalAmount, // Lo que debe el otro
         original_amount: amount, // Lo que costó total
         payer_id: user.id,
-        debtor_email: debtorEmail,
+        debtor_email: debtorEmail, // Guardamos el email directamente
         group_id: groupId,
         status: "pending",
       });
