@@ -57,10 +57,12 @@ export default function AdvancedCreateGroupForm() {
 
       // 3. Añadir miembros
       const allMembers = [...emails, user.email];
+      // ...
       const membersToInsert = allMembers.map(email => ({
         group_id: group.id,
-        member_email: email
+        member_email: email,
       }));
+      // ...
 
       const { error: membersError } = await supabase
         .from("group_members")
