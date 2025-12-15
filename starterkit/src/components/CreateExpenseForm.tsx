@@ -4,7 +4,11 @@ import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
-export default function CreateExpenseForm() {
+export default function CreateExpenseForm({
+  currentUserEmail,
+}: {
+  currentUserEmail: string; // 👈 ESTO ARREGLA EL ERROR ROJO
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
@@ -13,163 +17,123 @@ export default function CreateExpenseForm() {
   const handleSubmit = async (formData: FormData) => {
     setLoading(true);
     setError(null);
-    
-    const description = formData.get("description") as string;
-    const amount = parseFloat(formData.get("amount") as string);
-    const debtorEmail = formData.get("debtor_email") as string;
-    const splitType = formData.get("split_type") === "on"; 
-    
-    // Archivo (recibo)
-    const file = formData.get("receipt") as File;
-    let receiptUrl: string | null = null;
 
+    const description = formData.get("description") as string;
+    const amountStr = formData.get("amount") as string;
+    const debtorEmail = formData.get("debtor_email") as string;
+    const split = formData.get("split") === "on"; // Checkbox
+
+    const amount = parseFloat(amountStr);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) {
-      setError("No hay sesión activa.");
-      setLoading(false);
-      return;
-    }
-
-    // 1. VALIDACIÓN: ¿EL USUARIO EXISTE? 🕵️‍♂️
-    // Buscamos en la tabla profiles si existe ese email
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", debtorEmail)
-      .single();
-
-    if (!profileData) {
-      setError(`El usuario "${debtorEmail}" no está registrado en Miti. Pídele que se cree una cuenta primero.`);
-      setLoading(false);
-      return; // Detenemos todo aquí
-    }
+    if (!user) return;
 
     try {
-      // 2. Subir imagen si existe
-      if (file && file.size > 0) {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from("receipts")
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-        
-        const { data: urlData } = supabase.storage
-          .from("receipts")
-          .getPublicUrl(fileName);
-          
-        receiptUrl = urlData.publicUrl;
+      if (!amount || !description || !debtorEmail) throw new Error("Completa todos los campos");
+      
+      // Validación simple: No puedes cobrarte a ti mismo
+      if (debtorEmail.trim().toLowerCase() === currentUserEmail.trim().toLowerCase()) {
+        throw new Error("No puedes cobrarte a ti mismo.");
       }
 
-      // 3. Crear el Gasto
-      const finalAmount = splitType ? amount / 2 : amount;
+      // Si se marca "Dividir", cobras la mitad. Si no, cobras el total.
+      const finalAmount = split ? amount / 2 : amount;
 
       const { error: insertError } = await supabase.from("expenses").insert({
         description,
-        amount: finalAmount,     
-        original_amount: splitType ? amount : finalAmount,
+        amount: finalAmount, // Lo que te deben
+        original_amount: amount, // Costo real
         payer_id: user.id,
-        debtor_email: debtorEmail,
-        status: "pending",
-        receipt_url: receiptUrl,
+        debtor_email: debtorEmail.toLowerCase().trim(),
+        group_id: null, // ES NULL PORQUE ES 1 A 1
+        status: "proposed", // Nace como propuesta
       });
 
       if (insertError) throw insertError;
 
-      // Éxito
       formRef.current?.reset();
-      router.refresh(); // Refresca la lista de gastos
-      setLoading(false);
-
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+    <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
+      <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
         ✨ Nuevo Gasto (1 a 1)
       </h3>
 
-      {/* Mensaje de Error */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
-          🚨 {error}
+        <div className="mb-4 p-3 bg-red-50 text-red-700 text-xs rounded border border-red-100">
+          {error}
         </div>
       )}
 
       <form ref={formRef} action={handleSubmit} className="space-y-4">
+        
+        {/* Descripción */}
         <div>
-          <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Descripción</label>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
           <input
             name="description"
             type="text"
             required
             placeholder="Cena, Uber..."
-            className="w-full border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
           />
         </div>
 
+        {/* Fila doble: Monto y Email */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Monto Total ($)</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto Total ($)</label>
             <input
               name="amount"
               type="number"
               step="0.01"
               required
-              placeholder="2000"
-              className="w-full border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="0.00"
+              className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email del otro</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email del otro</label>
             <input
               name="debtor_email"
               type="email"
               required
               placeholder="amigo@email.com"
-              className="w-full border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
             />
           </div>
         </div>
 
-        <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+        {/* Checkbox Dividir */}
+        <div className="bg-gray-50 p-3 rounded border border-gray-200">
           <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              name="split_type"
-              type="checkbox"
-              defaultChecked
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            <input 
+              type="checkbox" 
+              name="split" 
+              defaultChecked 
+              className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
             />
-            <span className="text-sm text-gray-600">
-              Dividir a la mitad (Tú pagas 50%, él debe 50%)
-            </span>
+            <div className="text-sm text-gray-700">
+              <span className="font-medium block">Dividir a la mitad</span>
+              <span className="text-xs text-gray-500">Tú pagas 50%, él debe 50%</span>
+            </div>
           </label>
         </div>
 
-        <div>
-          <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Foto del Comprobante</label>
-          <input
-            name="receipt"
-            type="file"
-            accept="image/*"
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-          />
-        </div>
-
         <button
-          disabled={loading}
           type="submit"
-          className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          disabled={loading}
+          className="w-full bg-indigo-600 text-white font-bold py-2.5 rounded-lg hover:bg-indigo-700 transition-colors text-sm disabled:opacity-50"
         >
-          {loading ? "Verificando..." : "Crear Gasto"}
+          {loading ? "Guardando..." : "Crear Gasto"}
         </button>
       </form>
     </div>
