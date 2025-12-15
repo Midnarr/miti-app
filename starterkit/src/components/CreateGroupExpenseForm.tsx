@@ -4,14 +4,13 @@ import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
-// Actualizamos para aceptar array de strings (emails)
 export default function CreateGroupExpenseForm({
   groupId,
-  members, 
+  members,
   currentUserEmail,
 }: {
   groupId: string;
-  members: string[]; // <--- ESTO ARREGLA LA LÍNEA ROJA DE VS CODE
+  members: string[]; // <--- LISTA DE STRINGS SIMPLE
   currentUserEmail: string;
 }) {
   const router = useRouter();
@@ -27,27 +26,19 @@ export default function CreateGroupExpenseForm({
     const amountStr = formData.get("amount") as string;
     const debtorEmail = formData.get("debtor_email") as string;
 
-    if (!amountStr || !description || !debtorEmail) {
-      setError("Por favor completa todos los campos");
-      setLoading(false);
-      return;
-    }
-
     const amount = parseFloat(amountStr);
-
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return;
 
     try {
-      // Cálculo simple: la mitad para cada uno
-      const finalAmount = amount / 2; 
+      if (!amount || !description || !debtorEmail) throw new Error("Completa todos los campos");
 
       const { error: insertError } = await supabase.from("expenses").insert({
         description,
-        amount: finalAmount, // Lo que te deben
-        original_amount: amount, // Costo total
+        amount: amount / 2, // Lógica simple: dividir a la mitad
+        original_amount: amount,
         payer_id: user.id,
         debtor_email: debtorEmail,
         group_id: groupId,
@@ -66,38 +57,21 @@ export default function CreateGroupExpenseForm({
     }
   };
 
-  // Filtrar para no cobrarme a mí mismo
   const availableDebtors = members.filter(email => email !== currentUserEmail);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
       <h3 className="font-bold text-gray-800 mb-4">💸 Nuevo Gasto</h3>
-      
       {error && <p className="text-red-500 text-xs mb-3">{error}</p>}
-
       <form ref={formRef} action={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
-          <input name="description" required className="w-full border p-2 rounded text-sm" placeholder="Ej: Cena" />
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto ($)</label>
-          <input name="amount" type="number" step="0.01" required className="w-full border p-2 rounded text-sm" />
-        </div>
-
-        <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cobrar a:</label>
-          <select name="debtor_email" required className="w-full border p-2 rounded text-sm bg-white">
-            <option value="">Elegir...</option>
-            {availableDebtors.map(email => (
-              <option key={email} value={email}>{email}</option>
-            ))}
-          </select>
-        </div>
-
+        <input name="description" required placeholder="Descripción" className="w-full border p-2 rounded text-sm" />
+        <input name="amount" type="number" required placeholder="Monto" className="w-full border p-2 rounded text-sm" />
+        <select name="debtor_email" required className="w-full border p-2 rounded text-sm bg-white">
+            <option value="">Cobrar a...</option>
+            {availableDebtors.map(e => <option key={e} value={e}>{e}</option>)}
+        </select>
         <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 disabled:opacity-50">
-          {loading ? "Guardando..." : "Guardar Gasto"}
+          {loading ? "Guardando..." : "Guardar"}
         </button>
       </form>
     </div>
