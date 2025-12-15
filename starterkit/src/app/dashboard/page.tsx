@@ -2,7 +2,7 @@ import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import CreateExpenseForm from "@/components/CreateExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
-import FriendsManager from "@/components/FriendsManager"; // Importamos el gestor
+// Eliminamos el import de FriendsManager porque ya no va aquí
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -19,7 +19,8 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // 2. OBTENER AMIGOS (NUEVO)
+  // 2. OBTENER AMIGOS 
+  // (Aunque quitamos el Gestor, necesitamos la data para el selector del formulario)
   const { data: friends } = await supabase
     .from("friends")
     .select("*")
@@ -44,16 +45,13 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
         
-        {/* COLUMNA IZQUIERDA: Formularios */}
+        {/* COLUMNA IZQUIERDA: Solo el Formulario de Gasto Rápido */}
         <div className="md:col-span-1 space-y-8">
-           {/* 1. Formulario Gasto (Le pasamos los amigos) */}
            <CreateExpenseForm 
               currentUserEmail={user.email!} 
               friends={myFriends} 
            />
-
-           {/* 2. Gestor de Amigos (Nuevo) */}
-           <FriendsManager friends={myFriends} />
+           {/* El FriendsManager se ha eliminado de aquí */}
         </div>
 
         {/* COLUMNA DERECHA: Resúmenes */}

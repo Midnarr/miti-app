@@ -1,7 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { notFound, redirect } from "next/navigation";
 import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
-import ExpenseStatusButtons from "@/components/ExpenseStatusButtons"; // Asegúrate de importar esto
+import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 import Link from "next/link";
 
 export default async function GroupDetailPage(props: {
@@ -26,7 +26,7 @@ export default async function GroupDetailPage(props: {
     return notFound();
   }
 
-  // 2. OBTENER MIEMBROS
+  // 2. OBTENER MIEMBROS DEL GRUPO
   const { data: membersData } = await supabase
     .from("group_members")
     .select("member_email") 
@@ -34,7 +34,12 @@ export default async function GroupDetailPage(props: {
 
   const memberEmails = membersData?.map(m => m.member_email) || [];
 
-  // 3. OBTENER GASTOS
+  // 3. OBTENER AMIGOS (Para mostrar nombres bonitos en el formulario)
+  const { data: friends } = await supabase
+    .from("friends")
+    .select("*");
+
+  // 4. OBTENER GASTOS
   const { data: expenses } = await supabase
     .from("expenses")
     .select("*")
@@ -48,7 +53,7 @@ export default async function GroupDetailPage(props: {
       <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <div className="flex items-center gap-3">
-             <Link href="/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">
+             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">
                ←
              </Link>
              <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
@@ -69,25 +74,25 @@ export default async function GroupDetailPage(props: {
           <div className="sticky top-8">
             <CreateGroupExpenseForm 
               groupId={groupId} 
-              members={memberEmails}
+              members={memberEmails} 
               currentUserEmail={user.email!}
+              friends={friends || []} // ✅ Pasamos los amigos aquí
             />
           </div>
         </div>
 
-        {/* DERECHA: LISTA DE GASTOS (Aquí está tu lógica nueva) */}
+        {/* DERECHA: LISTA DE GASTOS */}
         <div className="lg:col-span-2 space-y-4">
           <h2 className="font-bold text-xl text-gray-800">Historial</h2>
           
-          {expenses?.length === 0 ? (
+          {!expenses || expenses.length === 0 ? (
             <div className="bg-white p-12 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
               <p className="mb-2 text-4xl">💸</p>
               <p>No hay gastos registrados aún.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {expenses?.map((expense) => {
-                // --- TU LÓGICA COMIENZA AQUÍ ---
+              {expenses.map((expense) => {
                 const isMePayer = expense.payer_id === user.id;
                 const isMeDebtor = expense.debtor_email === user.email;
 
@@ -109,7 +114,7 @@ export default async function GroupDetailPage(props: {
                     <div className="flex flex-col items-end gap-2">
                       <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
                       
-                      {/* Pasamos todas las props necesarias al botón inteligente */}
+                      {/* Botones inteligentes de estado */}
                       <ExpenseStatusButtons 
                         expenseId={expense.id}
                         currentStatus={expense.status}
@@ -119,7 +124,6 @@ export default async function GroupDetailPage(props: {
                     </div>
                   </div>
                 );
-                // --- FIN DE TU LÓGICA ---
               })}
             </div>
           )}
