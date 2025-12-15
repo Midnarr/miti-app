@@ -24,15 +24,15 @@ export default async function GroupDetailPage(props: {
 
   if (!group) return notFound();
 
-  // 2. OBTENER MIEMBROS (Aquí estaba el problema)
-  // Traemos tanto 'member_email' (nuevo) como 'user_email' (viejo) por seguridad
+  // 2. OBTENER MIEMBROS (VERSIÓN LIMPIA) 🧹
+  // Ahora solo buscamos 'member_email' directamente
   const { data: membersData } = await supabase
     .from("group_members")
-    .select("*") 
+    .select("member_email") 
     .eq("group_id", groupId);
 
-  // Normalizamos la lista de emails para evitar errores
-  const memberEmails = membersData?.map(m => m.member_email || m.user_email).filter(Boolean) || [];
+  // Mapeamos directamente porque la base de datos ya asegura que no sean nulos
+  const memberEmails = membersData?.map(m => m.member_email) || [];
 
   // 3. OBTENER PERFILES (Para mostrar nombres bonitos)
   const { data: profiles } = await supabase
@@ -99,7 +99,7 @@ export default async function GroupDetailPage(props: {
           <div className="sticky top-8">
             <CreateGroupExpenseForm 
               groupId={groupId} 
-              members={memberEmails as string[]} // Pasamos la lista corregida
+              members={memberEmails} // Pasamos la lista limpia de strings
               currentUserEmail={user.email!}
             />
           </div>
