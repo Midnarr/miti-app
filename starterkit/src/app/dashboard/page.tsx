@@ -9,40 +9,35 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER TODOS LOS PERFILES (Estrategia segura)
-  // Traemos todos los usuarios para poder buscar sus nombres por ID o Email manualmente
+  // 1. Obtener PERFILES (Para traducir email -> username en cobros)
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, email, username");
+    .select("email, username");
 
-  // Creamos diccionarios para búsqueda rápida
-  const idToNameMap: Record<string, string> = {};
-  const emailToNameMap: Record<string, string> = {};
-
+  const userMap: Record<string, string> = {};
   profiles?.forEach((p) => {
-    const name = p.username || p.email || "Usuario";
-    if (p.id) idToNameMap[p.id] = name;
-    if (p.email) emailToNameMap[p.email] = name;
+    if (p.email) userMap[p.email] = p.username || p.email;
   });
 
-  // Helper para obtener nombre (Tú, Username o Email)
-  const getUserNameById = (userId: string) => {
-    if (userId === user.id) return "Tú";
-    return idToNameMap[userId] ? `@${idToNameMap[userId]}` : "Alguien";
+  const getDisplayName = (email: string) => {
+    if (email === user.email) return "Tú";
+    const name = userMap[email];
+    return name ? `@${name}` : email;
   };
 
-  const getUserNameByEmail = (email: string) => {
-    if (email === user.email) return "Ti"; // Para "Te debe a Ti"
-    return emailToNameMap[email] ? `@${emailToNameMap[email]}` : email;
-  };
-
-  // 2. OBTENER GASTOS (Sin Joins complejos para evitar errores)
+  // 2. DEUDAS (Me cobran a mí)
+  // CAMBIO IMPORTANTE: Agregamos 'profiles:payer_id(...)' para saber quién pagó (a quién le debo)
   const { data: debts } = await supabase
     .from("expenses")
-    .select("*, groups(name)") 
+    .select(`
+      *, 
+      groups(name),
+      profiles:payer_id (username, email)
+    `) 
     .eq("debtor_email", user.email)
     .order("created_at", { ascending: false });
 
+  // 3. COBROS (Yo cobro a otros)
   const { data: receivables } = await supabase
     .from("expenses")
     .select("*, groups(name)")
@@ -55,12 +50,22 @@ export default async function DashboardPage() {
     });
   };
 
+  // Helper para sacar el nombre del acreedor (a quien le debo)
+  const getCreditorName = (expense: any) => {
+    // Supabase a veces devuelve un array o un objeto en las relaciones
+    const profile = Array.isArray(expense.profiles) ? expense.profiles[0] : expense.profiles;
+    if (profile) {
+      return profile.username ? `@${profile.username}` : profile.email;
+    }
+    return "Alguien";
+  };
+
   return (
     <div className="min-h-screen bg-white p-4 md:p-8"> 
       <div className="max-w-5xl mx-auto space-y-8">
         
         <h1 className="text-3xl font-extrabold text-gray-900">
-          Hola, <span className="text-indigo-700">{idToNameMap[user.id] || "Usuario"}</span> 👋
+          Hola, <span className="text-indigo-700">{userMap[user.email!] || "Usuario"}</span> 👋
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -102,9 +107,9 @@ export default async function DashboardPage() {
                             <p className="font-bold text-gray-900 text-lg">{expense.description}</p>
                           </div>
                           
-                          {/* A QUIÉN LE DEBES (Usando el mapa seguro) */}
+                          {/* NUEVO: A QUIÉN LE DEBES */}
                           <p className="text-sm text-gray-600 mb-2">
-                            Le debes a: <strong className="text-indigo-700">{getUserNameById(expense.payer_id)}</strong>
+                            Le debes a: <strong className="text-indigo-700">{getCreditorName(expense)}</strong>
                           </p>
 
                           <div className="flex flex-wrap gap-2 text-sm mt-1 items-center">
@@ -175,9 +180,8 @@ export default async function DashboardPage() {
                             <p className="font-medium text-gray-900 text-lg">{expense.description}</p>
                           </div>
 
-                          {/* QUIÉN TE DEBE (Usando el mapa por email) */}
                           <p className="text-sm text-gray-700 mb-2">
-                            Te debe: <strong className="text-indigo-700">{getUserNameByEmail(expense.debtor_email)}</strong>
+                            Te debe: <strong className="text-indigo-700">{getDisplayName(expense.debtor_email)}</strong>
                           </p>
                           
                            <div className="flex flex-wrap gap-2 text-sm items-center">
