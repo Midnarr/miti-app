@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. Obtener PERFILES (Para traducir email -> username en cobros)
+  // 1. Obtener PERFILES (Para traducir email -> username)
   const { data: profiles } = await supabase
     .from("profiles")
     .select("email, username");
@@ -25,19 +25,13 @@ export default async function DashboardPage() {
     return name ? `@${name}` : email;
   };
 
-  // 2. DEUDAS (Me cobran a mí)
-  // CAMBIO IMPORTANTE: Agregamos 'profiles:payer_id(...)' para saber quién pagó (a quién le debo)
+  // 2. DEUDAS y COBROS
   const { data: debts } = await supabase
     .from("expenses")
-    .select(`
-      *, 
-      groups(name),
-      profiles:payer_id (username, email)
-    `) 
+    .select("*, groups(name)") 
     .eq("debtor_email", user.email)
     .order("created_at", { ascending: false });
 
-  // 3. COBROS (Yo cobro a otros)
   const { data: receivables } = await supabase
     .from("expenses")
     .select("*, groups(name)")
@@ -50,20 +44,12 @@ export default async function DashboardPage() {
     });
   };
 
-  // Helper para sacar el nombre del acreedor (a quien le debo)
-  const getCreditorName = (expense: any) => {
-    // Supabase a veces devuelve un array o un objeto en las relaciones
-    const profile = Array.isArray(expense.profiles) ? expense.profiles[0] : expense.profiles;
-    if (profile) {
-      return profile.username ? `@${profile.username}` : profile.email;
-    }
-    return "Alguien";
-  };
-
   return (
+    // Cambiamos bg-gray-50 por un fondo blanco para más limpieza
     <div className="min-h-screen bg-white p-4 md:p-8"> 
       <div className="max-w-5xl mx-auto space-y-8">
         
+        {/* Título principal más oscuro */}
         <h1 className="text-3xl font-extrabold text-gray-900">
           Hola, <span className="text-indigo-700">{userMap[user.email!] || "Usuario"}</span> 👋
         </h1>
@@ -78,7 +64,8 @@ export default async function DashboardPage() {
           {/* COLUMNA DERECHA: LISTAS */}
           <div className="md:col-span-2 space-y-8">
             
-            {/* --- SECCIÓN 1: DEUDAS (A QUIÉN LE DEBES) --- */}
+            {/* --- SECCIÓN 1: DEUDAS --- */}
+            {/* Quitamos el borde naranja y usamos un fondo naranja muy suave para destacar */}
             <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
               <h2 className="font-bold text-xl mb-4 text-orange-800 flex items-center gap-2">
                 🔔 Tienes que pagar
@@ -90,6 +77,7 @@ export default async function DashboardPage() {
               </h2>
 
               {debts?.length === 0 ? (
+                // Texto de estado vacío más oscuro (gray-600)
                 <p className="text-gray-600 text-sm italic">Estás al día. ¡Genial!</p>
               ) : (
                 <div className="space-y-4 bg-white p-4 rounded-lg border border-orange-100">
@@ -104,17 +92,14 @@ export default async function DashboardPage() {
                                 👥 {/* @ts-ignore */} {expense.groups.name}
                               </span>
                             )}
+                            {/* Descripción más oscura (gray-900) */}
                             <p className="font-bold text-gray-900 text-lg">{expense.description}</p>
                           </div>
                           
-                          {/* NUEVO: A QUIÉN LE DEBES */}
-                          <p className="text-sm text-gray-600 mb-2">
-                            Le debes a: <strong className="text-indigo-700">{getCreditorName(expense)}</strong>
-                          </p>
-
                           <div className="flex flex-wrap gap-2 text-sm mt-1 items-center">
                             {expense.original_amount && expense.original_amount !== expense.amount ? (
                               <>
+                                {/* Precio tachado un poco más oscuro (gray-500) */}
                                 <span className="text-gray-500 line-through text-xs">
                                   Total: ${expense.original_amount}
                                 </span>
@@ -140,6 +125,7 @@ export default async function DashboardPage() {
                             </a>
                           )}
                         </div>
+                        {/* Fecha más oscura (gray-500) */}
                         <p className="text-xs font-medium text-gray-500 whitespace-nowrap ml-2">{formatDate(expense.created_at)}</p>
                       </div>
 
@@ -156,13 +142,14 @@ export default async function DashboardPage() {
               )}
             </div>
 
-            {/* --- SECCIÓN 2: COBROS (QUIÉN TE DEBE) --- */}
+            {/* --- SECCIÓN 2: COBROS --- */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <h2 className="font-bold text-xl mb-4 text-gray-900 flex items-center gap-2">
                 💰 Te deben a ti
               </h2>
 
               {receivables?.length === 0 ? (
+                 // Texto de estado vacío más oscuro (gray-600)
                 <p className="text-gray-600 text-sm italic">No has creado cobros pendientes.</p>
               ) : (
                 <div className="space-y-4">
@@ -177,16 +164,19 @@ export default async function DashboardPage() {
                                 👥 {/* @ts-ignore */} {expense.groups.name}
                               </span>
                             )}
+                             {/* Descripción más oscura (gray-900) */}
                             <p className="font-medium text-gray-900 text-lg">{expense.description}</p>
                           </div>
 
+                          {/* "A: usuario" más oscuro */}
                           <p className="text-sm text-gray-700 mb-2">
-                            Te debe: <strong className="text-indigo-700">{getDisplayName(expense.debtor_email)}</strong>
+                            A: <strong className="text-indigo-700">{getDisplayName(expense.debtor_email)}</strong>
                           </p>
                           
                            <div className="flex flex-wrap gap-2 text-sm items-center">
                             {expense.original_amount && expense.original_amount !== expense.amount ? (
                               <>
+                                 {/* Precio tachado un poco más oscuro (gray-500) */}
                                 <span className="text-gray-500 line-through text-xs">
                                   Total: ${expense.original_amount}
                                 </span>
@@ -215,6 +205,7 @@ export default async function DashboardPage() {
                         </div>
 
                         <div className="flex flex-col items-end gap-3">
+                            {/* Fecha más oscura (gray-500) */}
                             <span className="text-xs font-medium text-gray-500">{formatDate(expense.created_at)}</span>
                            <ExpenseStatusButtons 
                               expenseId={expense.id} 
