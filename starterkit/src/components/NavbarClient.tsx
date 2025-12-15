@@ -23,7 +23,7 @@ export default function NavbarClient({ user }: { user: any }) {
 
   const links = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Grupos", href: "/dashboard/groups" },
+    { name: "Grupos", href: "/groups" },
   ];
 
   return (
