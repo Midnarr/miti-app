@@ -4,6 +4,16 @@ import { redirect } from "next/navigation";
 export default async function LoginPage(props: {
   searchParams: Promise<{ message?: string }>;
 }) {
+  // 1. VERIFICACIÓN DE SESIÓN (Lógica agregada)
+  // Antes de mostrar nada, comprobamos si ya hay usuario
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (user) {
+    return redirect("/dashboard");
+  }
+
+  // 2. Obtener parámetros (Next.js 15+)
   const searchParams = await props.searchParams;
   const message = searchParams?.message;
 
@@ -13,6 +23,7 @@ export default async function LoginPage(props: {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
     
+    // Necesitamos instanciar el cliente de nuevo dentro de la Server Action
     const supabase = await createClient();
 
     const { error } = await supabase.auth.signInWithPassword({
