@@ -17,7 +17,7 @@ export async function inviteMember(formData: FormData) {
   // 2. Insertamos el email limpio
   const { error } = await supabase
     .from("group_members")
-    .insert({ group_id: groupId, user_email: email });
+    .insert({ group_id: groupId, member_email: email });
 
   if (error) {
     console.error("Error invitando:", error);
