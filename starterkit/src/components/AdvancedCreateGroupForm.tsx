@@ -29,24 +29,7 @@ export default function AdvancedCreateGroupForm() {
     if (!user) return;
 
     try {
-      // 1. VALIDACIÓN
-      if (emails.length > 0) {
-        const { data: foundProfiles, error: searchError } = await supabase
-          .from("profiles")
-          .select("email")
-          .in("email", emails);
-
-        if (searchError) throw searchError;
-
-        const foundEmails = foundProfiles?.map(p => p.email) || [];
-        const missingEmails = emails.filter(e => !foundEmails.includes(e));
-
-        if (missingEmails.length > 0) {
-          throw new Error(`Usuarios no registrados: ${missingEmails.join(", ")}. Invítalos a Miti primero.`);
-        }
-      }
-
-      // 2. Crear el Grupo
+      // 1. Crear el Grupo
       const { data: group, error: groupError } = await supabase
         .from("groups")
         .insert({ name, created_by: user.id })
@@ -55,27 +38,34 @@ export default function AdvancedCreateGroupForm() {
 
       if (groupError) throw groupError;
 
-      // 3. Añadir miembros
+      // 2. Preparar Miembros
       const allMembers = [...emails, user.email];
       
+      // --- PUNTO CRÍTICO: AQUÍ SE DEFINE EL NOMBRE DE LA COLUMNA ---
       const membersToInsert = allMembers.map(email => ({
         group_id: group.id,
-        member_email: email  // <--- ¡AQUÍ ESTABA EL ERROR! Antes decía "user_email"
+        member_email: email  // <--- TIENE QUE DECIR member_email
       }));
+
+      // 🔍 DIAGNÓSTICO: Esto aparecerá en la consola de tu navegador (F12)
+      console.log("INTENTANDO ENVIAR ESTO A SUPABASE:", membersToInsert);
 
       const { error: membersError } = await supabase
         .from("group_members")
         .insert(membersToInsert);
 
-      if (membersError) throw membersError;
+      if (membersError) {
+        console.error("ERROR DE SUPABASE:", membersError);
+        throw membersError;
+      }
 
-      // Éxito
       formRef.current?.reset();
       router.refresh(); 
       
     } catch (e: any) {
-      console.error(e);
       setError(e.message);
+      // Si el error dice 'user_email', es que el código viejo sigue vivo
+      console.log("EL ERROR FUE:", e.message); 
     } finally {
       setLoading(false);
     }
@@ -84,10 +74,9 @@ export default function AdvancedCreateGroupForm() {
   return (
     <div className="bg-white p-6 rounded-xl shadow border border-indigo-100 h-fit">
       <h2 className="font-bold text-xl text-gray-800 mb-2">🚀 Nuevo Grupo</h2>
-      <p className="text-sm text-gray-500 mb-6">Crea un grupo e invita amigos al instante.</p>
-
+      
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-medium">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-medium break-all">
           🚨 {error}
         </div>
       )}
@@ -95,33 +84,16 @@ export default function AdvancedCreateGroupForm() {
       <form ref={formRef} action={createGroup} className="space-y-4">
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre</label>
-          <input
-            name="name"
-            type="text"
-            required
-            placeholder="Ej: Viaje al Sur 🏔️"
-            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
-          />
+          <input name="name" type="text" required className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm" />
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-            Invitar (Emails)
-          </label>
-          <textarea
-            name="emails"
-            rows={2}
-            placeholder="juan@gmail.com, maria@hotmail.com"
-            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
-          />
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Invitar (Emails)</label>
+          <textarea name="emails" rows={2} className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm" />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50 text-sm"
-        >
-          {loading ? "Verificando..." : "Crear Grupo"}
+        <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm">
+          {loading ? "Creando..." : "Crear Grupo"}
         </button>
       </form>
     </div>
