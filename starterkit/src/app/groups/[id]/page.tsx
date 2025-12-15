@@ -1,6 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { notFound, redirect } from "next/navigation";
 import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
+import ExpenseStatusButtons from "@/components/ExpenseStatusButtons"; // Asegúrate de importar esto
 import Link from "next/link";
 
 export default async function GroupDetailPage(props: {
@@ -14,27 +15,23 @@ export default async function GroupDetailPage(props: {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER EL GRUPO (Protegido contra nulos)
+  // 1. OBTENER EL GRUPO
   const { data: group, error: groupError } = await supabase
     .from("groups")
     .select("*")
     .eq("id", groupId)
     .single();
 
-  // Si no existe el grupo o hay error, mostramos página 404 en vez de explotar
   if (groupError || !group) {
     return notFound();
   }
 
   // 2. OBTENER MIEMBROS
-  // Usamos la tabla limpia "group_members" y la columna "member_email"
   const { data: membersData } = await supabase
     .from("group_members")
     .select("member_email") 
     .eq("group_id", groupId);
 
-  // Convertimos la respuesta de base de datos en una lista simple de textos
-  // Ejemplo: ["juan@gmail.com", "maria@hotmail.com"]
   const memberEmails = membersData?.map(m => m.member_email) || [];
 
   // 3. OBTENER GASTOS
@@ -72,13 +69,13 @@ export default async function GroupDetailPage(props: {
           <div className="sticky top-8">
             <CreateGroupExpenseForm 
               groupId={groupId} 
-              members={memberEmails} // ✅ Pasamos array de strings simple
+              members={memberEmails}
               currentUserEmail={user.email!}
             />
           </div>
         </div>
 
-        {/* DERECHA: LISTA DE GASTOS */}
+        {/* DERECHA: LISTA DE GASTOS (Aquí está tu lógica nueva) */}
         <div className="lg:col-span-2 space-y-4">
           <h2 className="font-bold text-xl text-gray-800">Historial</h2>
           
@@ -89,22 +86,41 @@ export default async function GroupDetailPage(props: {
             </div>
           ) : (
             <div className="space-y-4">
-              {expenses?.map((expense) => (
-                <div key={expense.id} className="bg-white p-5 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-gray-900">{expense.description}</p>
-                    <p className="text-sm text-gray-500">
-                      Cobrado a: <span className="font-medium text-indigo-600">{expense.debtor_email}</span>
-                    </p>
+              {expenses?.map((expense) => {
+                // --- TU LÓGICA COMIENZA AQUÍ ---
+                const isMePayer = expense.payer_id === user.id;
+                const isMeDebtor = expense.debtor_email === user.email;
+
+                // Definimos el color del borde según el estado
+                let borderColor = "border-gray-100";
+                if (expense.status === 'proposed') borderColor = "border-indigo-200"; // Azulito para nuevos
+                if (expense.status === 'pending') borderColor = "border-orange-200";  // Naranja para deuda confirmada
+                if (expense.status === 'paid') borderColor = "border-green-200";      // Verde para pagado
+
+                return (
+                  <div key={expense.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${borderColor} flex justify-between items-center transition-all hover:shadow-md`}>
+                    <div>
+                      <p className="font-bold text-gray-900">{expense.description}</p>
+                      <p className="text-sm text-gray-500">
+                        {isMePayer ? "Le cobraste a:" : "Te cobró:"} <span className="font-medium text-indigo-600">{isMeDebtor ? "Ti" : expense.debtor_email}</span>
+                      </p>
+                    </div>
+                    
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
+                      
+                      {/* Pasamos todas las props necesarias al botón inteligente */}
+                      <ExpenseStatusButtons 
+                        expenseId={expense.id}
+                        currentStatus={expense.status}
+                        isDebtor={isMeDebtor}
+                        isPayer={isMePayer}
+                      />
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold ${expense.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {expense.status === 'paid' ? 'Pagado' : 'Pendiente'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+                // --- FIN DE TU LÓGICA ---
+              })}
             </div>
           )}
         </div>

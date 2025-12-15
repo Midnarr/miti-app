@@ -39,12 +39,12 @@ export default function CreateGroupExpenseForm({
       // Insertamos el gasto
       const { error: insertError } = await supabase.from("expenses").insert({
         description,
-        amount: amount / 2, // Lógica simple: dividir a la mitad
-        original_amount: amount,
+        amount: amount / 2, 
+        original_amount: amount, 
         payer_id: user.id,
         debtor_email: debtorEmail,
-        group_id: groupId,
-        status: "pending",
+        group_id: groupId || null, // Manejamos el null si es gasto personal
+        status: "proposed", // 👈 CAMBIO AQUÍ: Nace como 'propuesto'
       });
 
       if (insertError) throw insertError;
