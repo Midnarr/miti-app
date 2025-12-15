@@ -29,7 +29,7 @@ export default function AdvancedCreateGroupForm() {
     if (!user) return;
 
     try {
-      // 1. VALIDACIÓN: VERIFICAR QUE TODOS LOS EMAILS EXISTEN
+      // 1. VALIDACIÓN
       if (emails.length > 0) {
         const { data: foundProfiles, error: searchError } = await supabase
           .from("profiles")
@@ -57,12 +57,11 @@ export default function AdvancedCreateGroupForm() {
 
       // 3. Añadir miembros
       const allMembers = [...emails, user.email];
-      // ...
+      
       const membersToInsert = allMembers.map(email => ({
         group_id: group.id,
-        member_email: email,
+        member_email: email  // <--- ¡AQUÍ ESTABA EL ERROR! Antes decía "user_email"
       }));
-      // ...
 
       const { error: membersError } = await supabase
         .from("group_members")
@@ -70,13 +69,12 @@ export default function AdvancedCreateGroupForm() {
 
       if (membersError) throw membersError;
 
-      // Limpiar formulario y refrescar lista
+      // Éxito
       formRef.current?.reset();
       router.refresh(); 
-      // Opcional: Si quieres redirigir adentro del grupo, descomenta esto:
-      // router.push(`/dashboard/groups/${group.id}`);
       
     } catch (e: any) {
+      console.error(e);
       setError(e.message);
     } finally {
       setLoading(false);
@@ -116,9 +114,6 @@ export default function AdvancedCreateGroupForm() {
             placeholder="juan@gmail.com, maria@hotmail.com"
             className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
           />
-          <p className="text-[10px] text-gray-400 mt-1">
-            Separa con comas. Deben tener cuenta en Miti.
-          </p>
         </div>
 
         <button

@@ -4,14 +4,14 @@ import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
-// CORRECCIÓN: 'members' ahora acepta una lista simple de emails (strings)
+// Actualizamos para aceptar array de strings (emails)
 export default function CreateGroupExpenseForm({
   groupId,
-  members,
+  members, 
   currentUserEmail,
 }: {
   groupId: string;
-  members: string[]; // <--- ESTO SOLUCIONA EL ERROR ROJO
+  members: string[]; // <--- ESTO ARREGLA LA LÍNEA ROJA DE VS CODE
   currentUserEmail: string;
 }) {
   const router = useRouter();
@@ -24,8 +24,16 @@ export default function CreateGroupExpenseForm({
     setError(null);
     
     const description = formData.get("description") as string;
-    const amount = parseFloat(formData.get("amount") as string);
+    const amountStr = formData.get("amount") as string;
     const debtorEmail = formData.get("debtor_email") as string;
+
+    if (!amountStr || !description || !debtorEmail) {
+      setError("Por favor completa todos los campos");
+      setLoading(false);
+      return;
+    }
+
+    const amount = parseFloat(amountStr);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -33,19 +41,15 @@ export default function CreateGroupExpenseForm({
     if (!user) return;
 
     try {
-      if (!amount || amount <= 0) throw new Error("Ingresa un monto válido.");
-      if (!description) throw new Error("Ingresa una descripción.");
-      if (!debtorEmail) throw new Error("Selecciona a quién cobrarle.");
-
-      // Lógica: Se divide a la mitad entre el pagador y el deudor
+      // Cálculo simple: la mitad para cada uno
       const finalAmount = amount / 2; 
 
       const { error: insertError } = await supabase.from("expenses").insert({
         description,
-        amount: finalAmount, // Lo que debe el otro
-        original_amount: amount, // Lo que costó total
+        amount: finalAmount, // Lo que te deben
+        original_amount: amount, // Costo total
         payer_id: user.id,
-        debtor_email: debtorEmail, // Guardamos el email directamente
+        debtor_email: debtorEmail,
         group_id: groupId,
         status: "pending",
       });
@@ -62,67 +66,38 @@ export default function CreateGroupExpenseForm({
     }
   };
 
-  // Filtramos para no mostrarte a ti mismo en el selector
+  // Filtrar para no cobrarme a mí mismo
   const availableDebtors = members.filter(email => email !== currentUserEmail);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
-      <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-        💸 Nuevo Gasto Grupal
-      </h3>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 text-xs rounded border border-red-100">
-          {error}
-        </div>
-      )}
+      <h3 className="font-bold text-gray-800 mb-4">💸 Nuevo Gasto</h3>
+      
+      {error && <p className="text-red-500 text-xs mb-3">{error}</p>}
 
       <form ref={formRef} action={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
-          <input
-            name="description"
-            type="text"
-            required
-            placeholder="Ej: Compras del super"
-            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
-          />
+          <input name="description" required className="w-full border p-2 rounded text-sm" placeholder="Ej: Cena" />
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto Total ($)</label>
-          <input
-            name="amount"
-            type="number"
-            step="0.01"
-            required
-            placeholder="0.00"
-            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500"
-          />
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto ($)</label>
+          <input name="amount" type="number" step="0.01" required className="w-full border p-2 rounded text-sm" />
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cobrar la mitad a:</label>
-          <select 
-            name="debtor_email" 
-            required
-            className="w-full rounded-lg border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-          >
-            <option value="">Selecciona un miembro...</option>
-            {availableDebtors.map((email) => (
-              <option key={email} value={email}>
-                {email}
-              </option>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cobrar a:</label>
+          <select name="debtor_email" required className="w-full border p-2 rounded text-sm bg-white">
+            <option value="">Elegir...</option>
+            {availableDebtors.map(email => (
+              <option key={email} value={email}>{email}</option>
             ))}
           </select>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white font-bold py-2.5 rounded-lg hover:bg-indigo-700 transition-colors text-sm disabled:opacity-50"
-        >
-          {loading ? "Guardando..." : "Registrar Gasto"}
+        <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 disabled:opacity-50">
+          {loading ? "Guardando..." : "Guardar Gasto"}
         </button>
       </form>
     </div>
