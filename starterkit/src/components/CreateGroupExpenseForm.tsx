@@ -4,14 +4,14 @@ import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
-// Actualizamos la definición para aceptar una lista simple de emails (strings)
+// AQUÍ ESTABA EL ERROR: Antes pedía objetos complejos, ahora acepta strings simples
 export default function CreateGroupExpenseForm({
   groupId,
   members,
   currentUserEmail,
 }: {
   groupId: string;
-  members: string[]; // <--- CAMBIO CLAVE: Ahora acepta strings directos
+  members: string[]; // <--- CAMBIO CLAVE: string[]
   currentUserEmail: string;
 }) {
   const router = useRouter();
@@ -25,7 +25,7 @@ export default function CreateGroupExpenseForm({
     
     const description = formData.get("description") as string;
     const amount = parseFloat(formData.get("amount") as string);
-    const splitType = formData.get("split_type") as string; // 'equal' | 'specific'
+    // const splitType = formData.get("split_type") as string; 
     const debtorEmail = formData.get("debtor_email") as string;
 
     const supabase = createClient();
@@ -34,29 +34,20 @@ export default function CreateGroupExpenseForm({
     if (!user) return;
 
     try {
-      // Validaciones básicas
       if (!amount || amount <= 0) throw new Error("Ingresa un monto válido.");
       if (!description) throw new Error("Ingresa una descripción.");
 
-      // Lógica de división
-      let finalAmount = amount;
-      let targetDebtor = debtorEmail;
+      // Lógica simple: Tú pagas todo, el otro te debe la mitad (o lo que sea el acuerdo)
+      // Por defecto guardamos que te deben el monto total o la mitad. 
+      // Para simplificar "dividir gastos", asumimos que si pongo $2000 y elijo a Juan, Juan me debe $1000.
+      const finalAmount = amount / 2; 
 
-      // Si es "Dividir entre todos" (Simplificado: asume que el deudor es "el grupo" o elige uno)
-      // Para esta versión simple, vamos a mantener el flujo 1 a 1 dentro del grupo
-      if (splitType === "equal" && members.length > 0) {
-        // Ejemplo: Si paga A y divide con B, B debe la mitad.
-        // Aquí forzamos a elegir un deudor para mantenerlo simple por ahora
-        finalAmount = amount / 2;
-      }
-
-      // Crear el Gasto
       const { error: insertError } = await supabase.from("expenses").insert({
         description,
-        amount: finalAmount,
-        original_amount: amount,
+        amount: finalAmount, // Lo que debe el otro
+        original_amount: amount, // Lo que costó total
         payer_id: user.id,
-        debtor_email: targetDebtor, // Guardamos el email directamente
+        debtor_email: debtorEmail,
         group_id: groupId,
         status: "pending",
       });
@@ -73,7 +64,7 @@ export default function CreateGroupExpenseForm({
     }
   };
 
-  // Filtramos para no mostrarte a ti mismo en la lista de "A quién cobrarle"
+  // Filtramos para no mostrarte a ti mismo en el selector
   const availableDebtors = members.filter(email => email !== currentUserEmail);
 
   return (
@@ -101,7 +92,7 @@ export default function CreateGroupExpenseForm({
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto ($)</label>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Monto Total ($)</label>
           <input
             name="amount"
             type="number"
@@ -113,7 +104,7 @@ export default function CreateGroupExpenseForm({
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cobrar a:</label>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cobrar la mitad a:</label>
           <select 
             name="debtor_email" 
             required
@@ -126,19 +117,6 @@ export default function CreateGroupExpenseForm({
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="bg-gray-50 p-3 rounded border border-gray-200">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input 
-              type="radio" 
-              name="split_type" 
-              value="equal" 
-              defaultChecked 
-              className="text-indigo-600 focus:ring-indigo-500"
-            />
-            <span className="text-sm text-gray-700">Dividir a la mitad (50/50)</span>
-          </label>
         </div>
 
         <button
