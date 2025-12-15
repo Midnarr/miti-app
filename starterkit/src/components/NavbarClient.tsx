@@ -1,28 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // Importar useRouter
-import { createClient } from "@/libs/supabase/client"; // Importar cliente cliente
+import { usePathname } from "next/navigation";
+import { createClient } from "@/libs/supabase/client";
 import { useState } from "react";
 
 export default function NavbarClient({ user }: { user: any }) {
   const pathname = usePathname();
-  const router = useRouter(); // Hook para navegar/refrescar
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const supabase = createClient();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // ESTA ES LA CLAVE: Refrescar la ruta para limpiar props del servidor
-    router.refresh(); 
-    router.push("/login"); // Te manda al login
+    // FORZAMOS RECARGA COMPLETA: Esto limpia caché y quita el email sí o sí
+    window.location.href = "/login";
   };
 
   const isActive = (path: string) => pathname === path;
 
-  // Si no hay usuario, mostramos un Navbar simplificado o nada
-  // Esto asegura que si user es null, no se pinte el menú
-  if (!user) return null; 
+  // Si no hay usuario, no mostramos nada (o podrías mostrar un Login button)
+  if (!user) return null;
 
   const links = [
     { name: "Dashboard", href: "/dashboard" },
@@ -63,7 +60,7 @@ export default function NavbarClient({ user }: { user: any }) {
             </span>
             <button
               onClick={handleLogout}
-              className="text-sm text-red-600 hover:text-red-800 font-medium"
+              className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-100 px-3 py-1 rounded-md hover:bg-red-50 transition-colors"
             >
               Salir
             </button>
@@ -73,10 +70,9 @@ export default function NavbarClient({ user }: { user: any }) {
           <div className="-mr-2 flex items-center sm:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none"
             >
               <span className="sr-only">Abrir menú</span>
-              {/* Icono Hamburguesa / X */}
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 {isMobileMenuOpen ? (
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -109,15 +105,13 @@ export default function NavbarClient({ user }: { user: any }) {
             ))}
           </div>
           <div className="pt-4 pb-4 border-t border-gray-200">
-            <div className="flex items-center px-4">
-              <div className="ml-3">
-                <div className="text-sm font-medium text-gray-800">{user.email}</div>
-              </div>
+            <div className="flex items-center px-4 mb-3">
+              <div className="text-sm font-medium text-gray-800">{user.email}</div>
             </div>
-            <div className="mt-3 space-y-1">
+            <div className="space-y-1 px-4">
               <button
                 onClick={handleLogout}
-                className="block w-full text-left px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className="block w-full text-center px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50"
               >
                 Cerrar Sesión
               </button>
