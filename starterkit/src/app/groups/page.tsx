@@ -1,7 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { revalidatePath } from "next/cache";
+import AdvancedCreateGroupForm from "@/components/AdvancedCreateGroupForm"; // Importamos el formulario
 
 export default async function GroupsPage() {
   const supabase = await createClient();
@@ -9,64 +9,71 @@ export default async function GroupsPage() {
 
   if (!user) redirect("/login");
 
-  // 1. Obtener mis grupos
+  // 1. Obtener mis grupos (donde soy miembro o creador)
+  // Nota: Ajusta esta consulta según tus políticas RLS si es necesario
   const { data: myGroups } = await supabase
     .from("groups")
     .select("*")
     .order("created_at", { ascending: false });
 
-  // 2. Server Action para crear grupo
-  async function createGroup(formData: FormData) {
-    "use server";
-    const name = formData.get("name") as string;
-    if (!name) return;
-
-    const supabase = await createClient();
-    await supabase.from("groups").insert({ name });
-    revalidatePath("/groups");
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        
+        {/* Encabezado */}
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Mis Grupos 👥</h1>
-          <Link href="/dashboard" className="text-indigo-600 hover:underline">
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-900">Mis Grupos 👥</h1>
+            <p className="text-gray-500 text-sm mt-1">Gestiona tus gastos compartidos</p>
+          </div>
+          <Link href="/dashboard" className="text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
             ← Volver al Dashboard
           </Link>
         </div>
 
-        {/* Formulario Crear Grupo */}
-        <div className="bg-white p-6 rounded-xl shadow border mb-8">
-          <h2 className="font-bold text-lg mb-4">Nuevo Grupo</h2>
-          <form action={createGroup} className="flex gap-4">
-            <input
-              name="name"
-              type="text"
-              placeholder="Ej: Viaje al Sur, Asado del Finde..."
-              className="flex-1 border rounded p-2"
-              required
-            />
-            <button className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
-              Crear
-            </button>
-          </form>
-        </div>
+        {/* LAYOUT: Grid de 2 columnas en PC, 1 en Móvil */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          
+          {/* COLUMNA 1: Formulario de Crear (Ocupa 1 espacio) */}
+          <div className="md:col-span-1">
+            <AdvancedCreateGroupForm />
+          </div>
 
-        {/* Lista de Grupos */}
-        <div className="grid gap-4">
-          {myGroups?.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No tienes grupos aún.</p>
-          ) : (
-            myGroups?.map((group) => (
-              <Link key={group.id} href={`/groups/${group.id}`}>
-                <div className="bg-white p-6 rounded-xl shadow border hover:shadow-md transition cursor-pointer flex justify-between items-center">
-                  <span className="font-bold text-lg">{group.name}</span>
-                  <span className="text-gray-400 text-sm">Ver detalles →</span>
-                </div>
-              </Link>
-            ))
-          )}
+          {/* COLUMNA 2: Lista de Grupos (Ocupa 2 espacios) */}
+          <div className="md:col-span-2 space-y-4">
+            <h2 className="font-bold text-gray-700 text-lg">Tus grupos activos</h2>
+            
+            {myGroups?.length === 0 ? (
+              <div className="bg-white p-10 rounded-xl border border-dashed border-gray-300 text-center">
+                <p className="text-gray-500 mb-2">No perteneces a ningún grupo aún.</p>
+                <p className="text-sm text-indigo-500">¡Usa el formulario para crear el primero!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {myGroups?.map((group) => (
+                  <Link key={group.id} href={`/dashboard/groups/${group.id}`}>
+                    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-xl">
+                          🏕️
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-900 block group-hover:text-indigo-700 transition-colors">
+                            {group.name}
+                          </span>
+                          <span className="text-xs text-gray-400">Clic para ver gastos</span>
+                        </div>
+                      </div>
+                      <span className="text-gray-300 group-hover:text-indigo-500 transition-colors">
+                        ➜
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
