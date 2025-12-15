@@ -62,7 +62,7 @@ export default function AdvancedCreateGroupForm() {
         group_id: group.id,
         member_email: email,
       }));
-      // ...
+      // .
 
       const { error: membersError } = await supabase
         .from("group_members")
