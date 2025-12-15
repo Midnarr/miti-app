@@ -1,13 +1,25 @@
 import { createClient } from "@/libs/supabase/server";
-import { redirect } from "next/navigation";
-import Link from "next/link";
-import { inviteMember } from "@/app/actions/groupActions";
-import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm"; // <--- IMPORTAR
-import ExpenseStatusButtons from "@/components/ExpenseStatusButtons"; // <--- Reusamos los botones de aprobar/rechazar
+import { notFound, redirect } from "next/navigation";
+import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
+import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 
-type Params = Promise<{ id: string }>;
+// Definimos la interfaz para el tipo de datos que viene de Supabase
+type Expense = {
+  id: string;
+  description: string;
+  amount: number;
+  original_amount: number | null;
+  created_at: string;
+  status: string; // 'pending' | 'paid'
+  payer_id: string;
+  debtor_email: string;
+  receipt_url: string | null;
+  profiles?: { username: string; email: string } | null; // Join opcional
+};
 
-export default async function GroupDetailPage(props: { params: Params }) {
+export default async function GroupDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
   const params = await props.params;
   const groupId = params.id;
   
@@ -16,136 +28,186 @@ export default async function GroupDetailPage(props: { params: Params }) {
 
   if (!user) redirect("/login");
 
-  // 1. Datos del Grupo
+  // 1. Obtener datos del GRUPO
   const { data: group } = await supabase
     .from("groups")
     .select("*")
     .eq("id", groupId)
     .single();
 
-  // 2. Miembros
+  if (!group) return notFound();
+
+  // 2. Obtener MIEMBROS
   const { data: members } = await supabase
     .from("group_members")
-    .select("*")
+    .select("member_email")
     .eq("group_id", groupId);
 
-  // 3. Gastos del Grupo
-  const { data: expenses } = await supabase
+  // 3. Obtener GASTOS del grupo (con datos del pagador)
+  // Nota: Hacemos un join manual simple o asumimos emails
+  const { data: expensesData } = await supabase
     .from("expenses")
-    .select("*")
+    .select(`
+      *,
+      profiles:payer_id (username, email) 
+    `)
     .eq("group_id", groupId)
     .order("created_at", { ascending: false });
 
-  if (!group) return <div className="p-8">Grupo no encontrado (o sin permisos)</div>;
+  // Forzamos el tipado
+  const expenses = expensesData as unknown as Expense[];
+
+  // Helpers de formato
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("es-ES", {
+      day: '2-digit', month: 'short'
+    });
+  };
+
+  // Helper para mostrar nombres bonitos
+  const getPayerName = (expense: Expense) => {
+    if (expense.payer_id === user.id) return "Tú";
+    // @ts-ignore
+    return expense.profiles?.username || expense.profiles?.email || "Alguien";
+  };
+
+  const getDebtorName = (email: string) => {
+    if (email === user.email) return "Ti";
+    return email.split('@')[0]; // Muestra "juan" de "juan@gmail.com"
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* CABECERA DEL GRUPO */}
+      <div className="bg-white p-6 rounded-xl shadow border border-indigo-100 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            👥 {group.name}
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {members?.length} miembros en este grupo
+          </p>
+        </div>
+        <span className="text-2xl">💸</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         
-        {/* Cabecera Simple */}
-        <div className="flex items-center gap-4">
-          <Link href="/groups" className="text-gray-500 hover:bg-gray-200 p-2 rounded-full transition">
-            ←
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-800">{group.name}</h1>
+        {/* COLUMNA IZQUIERDA: FORMULARIO */}
+        <div className="md:col-span-1">
+          <CreateGroupExpenseForm 
+            groupId={groupId} 
+            members={members?.map(m => m.member_email) || []}
+            currentUserEmail={user.email!}
+          />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* COLUMNA DERECHA: HISTORIAL ESTILO DASHBOARD */}
+        <div className="md:col-span-2">
+          <h2 className="font-bold text-xl mb-4 text-gray-800">Historial de Gastos</h2>
           
-          {/* COLUMNA IZQUIERDA (3/12): Miembros e Invitaciones */}
-          <div className="md:col-span-3 space-y-6">
-            <div className="bg-white p-5 rounded-xl shadow border">
-              <h3 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wide">Miembros</h3>
-              <ul className="space-y-3 mb-6">
-                {members?.map((m) => (
-                  <li key={m.id} className="flex items-center gap-3 text-sm text-gray-600">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
-                      {m.user_email[0].toUpperCase()}
-                    </div>
-                    <span className="truncate" title={m.user_email}>{m.user_email}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="pt-4 border-t border-gray-100">
-                <p className="text-xs font-bold text-gray-400 mb-2">INVITAR AMIGO</p>
-                <form action={inviteMember} className="flex flex-col gap-2">
-                  <input type="hidden" name="groupId" value={groupId} />
-                  <input name="email" type="email" placeholder="email@amigo.com" className="border rounded px-3 py-2 text-sm w-full bg-gray-50" required />
-                  <button className="bg-gray-800 text-white text-xs py-2 rounded hover:bg-black transition font-medium">Invitar</button>
-                </form>
+          <div className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+            {expenses?.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                No hay gastos registrados en este grupo aún.
               </div>
-            </div>
-          </div>
-
-          {/* COLUMNA CENTRAL (5/12): Lista de Gastos */}
-          <div className="md:col-span-5">
-            <div className="bg-white rounded-xl shadow border overflow-hidden">
-              <div className="p-5 border-b border-gray-100 bg-gray-50">
-                <h3 className="font-bold text-gray-700">Historial de Gastos</h3>
-              </div>
-
+            ) : (
               <div className="divide-y divide-gray-100">
-                {expenses?.length === 0 ? (
-                  <div className="text-center py-12 px-6">
-                    <div className="text-4xl mb-2">💸</div>
-                    <p className="text-gray-500 font-medium">No hay gastos aún</p>
-                    <p className="text-sm text-gray-400">Usa el formulario para agregar el primero.</p>
-                  </div>
-                ) : (
-                  expenses?.map((expense) => {
-                    const isPayer = expense.payer_id === user.id;
-                    const isDebtor = expense.debtor_email === user.email;
+                {expenses?.map((expense) => {
+                  const isMePayer = expense.payer_id === user.id;
+                  const isMeDebtor = expense.debtor_email === user.email;
+                  
+                  // Definimos colores según si debo o me deben
+                  // Si soy el deudor -> Naranja (Deuda)
+                  // Si soy el pagador -> Indigo (Me deben)
+                  // Si no soy ninguno (solo espectador) -> Gris
+                  let borderClass = "border-l-4 border-gray-200"; // Espectador
+                  if (isMeDebtor && expense.status === 'pending') borderClass = "border-l-4 border-orange-400";
+                  if (isMePayer && expense.status === 'pending') borderClass = "border-l-4 border-indigo-500";
+                  if (expense.status === 'paid') borderClass = "border-l-4 border-green-400"; // Pagado
 
-                    return (
-                      <div key={expense.id} className="p-4 hover:bg-gray-50 transition flex flex-col gap-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-bold text-gray-800">{expense.description}</p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {isPayer ? (
-                                <span>Tú cobras a <strong className="text-gray-700">{expense.debtor_email}</strong></span>
-                              ) : (
-                                <span><strong className="text-gray-700">Alguien</strong> te cobra a ti</span>
-                              )}
-                            </p>
-                            {expense.receipt_url && (
-                              <a href={expense.receipt_url} target="_blank" className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-1">
-                                📎 Ver recibo
-                              </a>
+                  return (
+                    <div key={expense.id} className={`p-4 ${borderClass} hover:bg-gray-50 transition-colors`}>
+                      <div className="flex justify-between items-start">
+                        
+                        {/* INFO IZQUIERDA */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-gray-900 text-lg">
+                              {expense.description}
+                            </span>
+                            {expense.status === 'paid' && (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase">
+                                Pagado
+                              </span>
                             )}
                           </div>
-                          <div className="text-right">
-                            <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
-                            <span className="text-xs text-gray-400">{new Date(expense.date).toLocaleDateString()}</span>
+                          
+                          <p className="text-sm text-gray-600 mb-2">
+                            <span className="font-medium text-indigo-700">{getPayerName(expense)}</span> pagó por{" "}
+                            <span className="font-medium text-orange-700">{getDebtorName(expense.debtor_email)}</span>
+                          </p>
+
+                          {/* LÓGICA DE PRECIOS (IGUAL AL DASHBOARD) */}
+                          <div className="flex flex-wrap gap-2 text-sm items-center">
+                            {expense.original_amount && expense.original_amount !== expense.amount ? (
+                              <>
+                                {/* Precio Original tachado */}
+                                <span className="text-gray-400 line-through text-xs">
+                                  Total: ${expense.original_amount}
+                                </span>
+                                {/* Tu Parte / Su Parte */}
+                                <span className={`font-bold px-2 py-0.5 rounded border ${
+                                  isMeDebtor 
+                                    ? "text-orange-700 bg-orange-50 border-orange-100" 
+                                    : "text-indigo-700 bg-indigo-50 border-indigo-100"
+                                }`}>
+                                  {isMeDebtor ? "Tu parte" : "Su parte"}: ${expense.amount}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="font-bold text-gray-800">
+                                Monto: ${expense.amount}
+                              </span>
+                            )}
                           </div>
+
+                          {/* RECIBO */}
+                          {expense.receipt_url && (
+                            <a 
+                              href={expense.receipt_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1 mt-2 w-fit"
+                            >
+                              📎 Ver recibo
+                            </a>
+                          )}
                         </div>
 
-                        {/* Botones de Acción (Reusamos el componente que ya creaste) */}
-                        <div className="flex justify-end pt-2 border-t border-gray-100 border-dashed">
-                           <ExpenseStatusButtons 
-                              expenseId={expense.id}
-                              currentStatus={expense.status!}
-                              isDebtor={isDebtor} // Aquí la lógica detecta si te corresponde aprobar
-                           />
+                        {/* ACCIONES DERECHA */}
+                        <div className="flex flex-col items-end gap-2 ml-4">
+                          <span className="text-xs text-gray-400 font-medium">
+                            {formatDate(expense.created_at)}
+                          </span>
+                          
+                          {/* Solo mostramos botones si soy parte de la transacción */}
+                          {(isMePayer || isMeDebtor) && (
+                            <ExpenseStatusButtons 
+                              expenseId={expense.id} 
+                              currentStatus={expense.status} 
+                              isDebtor={isMeDebtor} 
+                            />
+                          )}
                         </div>
+
                       </div>
-                    );
-                  })
-                )}
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            )}
           </div>
-
-          {/* COLUMNA DERECHA (4/12): Formulario de Crear */}
-          <div className="md:col-span-4">
-            <CreateGroupExpenseForm 
-              groupId={groupId} 
-              members={members || []} 
-              currentUserEmail={user.email!}
-            />
-          </div>
-
         </div>
       </div>
     </div>
