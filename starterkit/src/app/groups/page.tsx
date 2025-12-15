@@ -1,7 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import AdvancedCreateGroupForm from "@/components/AdvancedCreateGroupForm"; // Importamos el formulario
+import AdvancedCreateGroupForm from "@/components/AdvancedCreateGroupForm"; // 👈 Importamos el componente arreglado
 
 export default async function GroupsPage() {
   const supabase = await createClient();
@@ -9,8 +9,7 @@ export default async function GroupsPage() {
 
   if (!user) redirect("/login");
 
-  // 1. Obtener mis grupos (donde soy miembro o creador)
-  // Nota: Ajusta esta consulta según tus políticas RLS si es necesario
+  // Obtener mis grupos
   const { data: myGroups } = await supabase
     .from("groups")
     .select("*")
@@ -31,49 +30,41 @@ export default async function GroupsPage() {
           </Link>
         </div>
 
-        {/* LAYOUT: Grid de 2 columnas en PC, 1 en Móvil */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           
-          {/* COLUMNA 1: Formulario de Crear (Ocupa 1 espacio) */}
+          {/* COLUMNA 1: Aquí cargamos el FORMULARIO SEPARADO (El que ya arreglaste) */}
           <div className="md:col-span-1">
-            <AdvancedCreateGroupForm />
+            <AdvancedCreateGroupForm /> 
           </div>
 
-          {/* COLUMNA 2: Lista de Grupos (Ocupa 2 espacios) */}
+          {/* COLUMNA 2: Lista de Grupos */}
           <div className="md:col-span-2 space-y-4">
             <h2 className="font-bold text-gray-700 text-lg">Tus grupos activos</h2>
             
             {myGroups?.length === 0 ? (
               <div className="bg-white p-10 rounded-xl border border-dashed border-gray-300 text-center">
                 <p className="text-gray-500 mb-2">No perteneces a ningún grupo aún.</p>
-                <p className="text-sm text-indigo-500">¡Usa el formulario para crear el primero!</p>
               </div>
             ) : (
               <div className="grid gap-4">
                 {myGroups?.map((group) => (
-                  <Link key={group.id} href={`/groups/${group.id}`}>
+                  <Link key={group.id} href={`/dashboard/groups/${group.id}`}>
                     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-xl">
                           🏕️
                         </div>
-                        <div>
-                          <span className="font-bold text-gray-900 block group-hover:text-indigo-700 transition-colors">
-                            {group.name}
-                          </span>
-                          <span className="text-xs text-gray-400">Clic para ver gastos</span>
-                        </div>
+                        <span className="font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                          {group.name}
+                        </span>
                       </div>
-                      <span className="text-gray-300 group-hover:text-indigo-500 transition-colors">
-                        ➜
-                      </span>
+                      <span className="text-gray-300 group-hover:text-indigo-500">➜</span>
                     </div>
                   </Link>
                 ))}
               </div>
             )}
           </div>
-
         </div>
       </div>
     </div>
