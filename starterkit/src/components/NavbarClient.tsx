@@ -22,8 +22,8 @@ export default function NavbarClient({ user }: { user: any }) {
 
   const links = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Grupos", href: "/groups" }, // Ajusté la ruta a /dashboard/groups por convención
-    { name: "Amigos", href: "/friends" }, // Ajusté la ruta a /dashboard/friends
+    { name: "Grupos", href: "/groups" },
+    { name: "Amigos", href: "/friends" },
   ];
 
   return (
@@ -60,7 +60,7 @@ export default function NavbarClient({ user }: { user: any }) {
             
             {/* 👇 ÍCONO DE CONFIGURACIÓN (NUEVO) */}
             <Link 
-              href="/dashboard/settings" 
+              href="/settings" 
               className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-full transition-all"
               title="Configuración"
             >
