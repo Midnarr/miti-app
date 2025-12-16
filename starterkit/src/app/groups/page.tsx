@@ -56,7 +56,7 @@ export default async function GroupsPage() {
             ) : (
               <div className="grid gap-4">
                 {myGroups.map((group) => (
-                  <Link key={group.id} href={`/dashboard/groups/${group.id}`}>
+                  <Link key={group.id} href={`/groups/${group.id}`}>
                     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-xl">

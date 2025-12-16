@@ -20,11 +20,8 @@ export default function CreateGroupExpenseForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtramos para que no aparezcas tú mismo en la lista de "deudores"
-  // (Tú eres el que paga, no te puedes deber a ti mismo)
   const availableDebtors = members.filter(email => email !== currentUserEmail);
 
-  // Función para obtener nombre bonito
   const getFriendName = (email: string) => {
     const friend = friends.find(f => f.friend_email === email);
     return friend ? friend.friend_name : email.split("@")[0];
@@ -36,9 +33,8 @@ export default function CreateGroupExpenseForm({
     
     const description = formData.get("description") as string;
     const amountStr = formData.get("amount") as string;
-    
-    // Obtenemos TODOS los checkboxes marcados
     const selectedDebtors = formData.getAll("debtors") as string[];
+    const file = formData.get("receipt") as File; // 👈 OBTENEMOS EL ARCHIVO
 
     const amount = parseFloat(amountStr);
     const supabase = createClient();
@@ -49,28 +45,48 @@ export default function CreateGroupExpenseForm({
     try {
       if (!amount || amount <= 0) throw new Error("Ingresa un monto válido.");
       if (!description) throw new Error("Falta la descripción.");
-      if (selectedDebtors.length === 0) throw new Error("Selecciona al menos a una persona para dividir.");
+      if (selectedDebtors.length === 0) throw new Error("Selecciona al menos a una persona.");
 
-      // --- LÓGICA DE DIVISIÓN ---
-      // Si el gasto es de $3000 y seleccionas a 2 amigos (más tú = 3 personas):
-      // Cada uno debe poner $1000.
-      // Tú pagaste $3000, así que te deben $2000 en total ($1000 cada amigo).
+      // --- 1. SUBIDA DE IMAGEN (Si existe) ---
+      let receiptUrl = null;
       
-      const totalPeople = selectedDebtors.length + 1; // Amigos + Tú
+      if (file && file.size > 0) {
+        // Validar tamaño (ej: máx 5MB)
+        if (file.size > 5 * 1024 * 1024) throw new Error("La imagen es muy pesada (máx 5MB).");
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+        const filePath = `${user.id}/${fileName}`; // Carpeta por usuario para ordenar
+
+        const { error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // Obtener la URL pública para guardarla
+        const { data: urlData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
+          
+        receiptUrl = urlData.publicUrl;
+      }
+
+      // --- 2. LOGICA DE DIVISIÓN ---
+      const totalPeople = selectedDebtors.length + 1;
       const amountPerPerson = amount / totalPeople;
 
-      // Creamos una lista de promesas para insertar todos los gastos a la vez
       const expensesToInsert = selectedDebtors.map(debtorEmail => ({
         description,
-        amount: amountPerPerson,        // Lo que debe ESTA persona
-        original_amount: amount,        // El total de la cuenta original
+        amount: amountPerPerson,
+        original_amount: amount,
         payer_id: user.id,
         debtor_email: debtorEmail,
         group_id: groupId,
-        status: "proposed",             // Estado inicial
+        status: "proposed",
+        receipt_url: receiptUrl, // 👈 GUARDAMOS LA URL AQUÍ
       }));
 
-      // Insertamos todo junto
       const { error: insertError } = await supabase
         .from("expenses")
         .insert(expensesToInsert);
@@ -81,13 +97,13 @@ export default function CreateGroupExpenseForm({
       router.refresh();
       
     } catch (e: any) {
+      console.error(e);
       setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Pequeña utilidad para marcar todos los checkboxes visualmente
   const toggleAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     const checkboxes = formRef.current?.querySelectorAll('input[name="debtors"]');
     checkboxes?.forEach((cb: any) => cb.checked = e.target.checked);
@@ -96,7 +112,7 @@ export default function CreateGroupExpenseForm({
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
       <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-        🍕 Dividir Gasto Grupal
+        🧾 Nuevo Gasto con Recibo
       </h3>
       
       {error && (
@@ -110,25 +126,24 @@ export default function CreateGroupExpenseForm({
         {/* Descripción */}
         <div>
            <label className="text-xs font-bold text-gray-500 uppercase">Descripción</label>
-           <input 
-             name="description" 
-             required 
-             placeholder="Ej: Asado, Bebidas..." 
-             className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" 
-           />
+           <input name="description" required placeholder="Ej: Cena" className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" />
         </div>
         
         {/* Monto */}
         <div>
            <label className="text-xs font-bold text-gray-500 uppercase">Monto Total ($)</label>
-           <input 
-             name="amount" 
-             type="number" 
-             step="0.01" 
-             required 
-             placeholder="0.00" 
-             className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" 
-           />
+           <input name="amount" type="number" step="0.01" required placeholder="0.00" className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+
+        {/* FOTO DEL COMPROBANTE (NUEVO) */}
+        <div>
+          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Foto del Ticket (Opcional)</label>
+          <input 
+            type="file" 
+            name="receipt" 
+            accept="image/*"
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+          />
         </div>
 
         {/* SELECCIÓN DE MIEMBROS */}
@@ -143,16 +158,11 @@ export default function CreateGroupExpenseForm({
            
            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
                {availableDebtors.length === 0 ? (
-                 <p className="text-xs text-gray-400 italic">No hay otros miembros en este grupo.</p>
+                 <p className="text-xs text-gray-400 italic">No hay otros miembros.</p>
                ) : (
                  availableDebtors.map(email => (
                    <label key={email} className="flex items-center gap-3 p-2 hover:bg-white hover:shadow-sm rounded cursor-pointer transition-all">
-                     <input 
-                       type="checkbox" 
-                       name="debtors" 
-                       value={email} 
-                       className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                     />
+                     <input type="checkbox" name="debtors" value={email} className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" />
                      <div className="text-sm">
                        <span className="font-bold text-gray-700 block">{getFriendName(email)}</span>
                        <span className="text-xs text-gray-400">{email}</span>
@@ -161,17 +171,10 @@ export default function CreateGroupExpenseForm({
                  ))
                )}
            </div>
-           <p className="text-[10px] text-gray-400 mt-2 text-center">
-             Se dividirá el total entre los seleccionados + tú.
-           </p>
         </div>
 
-        <button 
-          type="submit" 
-          disabled={loading} 
-          className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 text-sm shadow-sm"
-        >
-          {loading ? "Calculando..." : "Dividir y Crear Gasto"}
+        <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 text-sm shadow-sm">
+          {loading ? "Subiendo..." : "Dividir y Crear"}
         </button>
       </form>
     </div>

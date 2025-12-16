@@ -26,7 +26,7 @@ export default async function GroupDetailPage(props: {
     return notFound();
   }
 
-  // 2. OBTENER MIEMBROS DEL GRUPO
+  // 2. OBTENER MIEMBROS
   const { data: membersData } = await supabase
     .from("group_members")
     .select("member_email") 
@@ -34,7 +34,7 @@ export default async function GroupDetailPage(props: {
 
   const memberEmails = membersData?.map(m => m.member_email) || [];
 
-  // 3. OBTENER AMIGOS (Para mostrar nombres bonitos en el formulario)
+  // 3. OBTENER AMIGOS (Para los nombres bonitos en el form)
   const { data: friends } = await supabase
     .from("friends")
     .select("*");
@@ -69,14 +69,14 @@ export default async function GroupDetailPage(props: {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* IZQUIERDA: FORMULARIO DE GASTOS */}
+        {/* IZQUIERDA: FORMULARIO */}
         <div className="lg:col-span-1">
           <div className="sticky top-8">
             <CreateGroupExpenseForm 
               groupId={groupId} 
               members={memberEmails} 
               currentUserEmail={user.email!}
-              friends={friends || []} // ✅ Pasamos los amigos aquí
+              friends={friends || []}
             />
           </div>
         </div>
@@ -96,17 +96,33 @@ export default async function GroupDetailPage(props: {
                 const isMePayer = expense.payer_id === user.id;
                 const isMeDebtor = expense.debtor_email === user.email;
 
-                // Definimos el color del borde según el estado
+                // Color del borde según estado
                 let borderColor = "border-gray-100";
-                if (expense.status === 'proposed') borderColor = "border-indigo-200"; // Azulito para nuevos
-                if (expense.status === 'pending') borderColor = "border-orange-200";  // Naranja para deuda confirmada
-                if (expense.status === 'paid') borderColor = "border-green-200";      // Verde para pagado
+                if (expense.status === 'proposed') borderColor = "border-indigo-200";
+                if (expense.status === 'pending') borderColor = "border-orange-200";
+                if (expense.status === 'paid') borderColor = "border-green-200";
 
                 return (
                   <div key={expense.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${borderColor} flex justify-between items-center transition-all hover:shadow-md`}>
                     <div>
-                      <p className="font-bold text-gray-900">{expense.description}</p>
-                      <p className="text-sm text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-gray-900">{expense.description}</p>
+                        
+                        {/* 📄 ENLACE AL RECIBO (Si existe) */}
+                        {expense.receipt_url && (
+                          <a 
+                            href={expense.receipt_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded border border-gray-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors flex items-center gap-1"
+                            title="Ver comprobante"
+                          >
+                            📎 Ticket
+                          </a>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-gray-500 mt-1">
                         {isMePayer ? "Le cobraste a:" : "Te cobró:"} <span className="font-medium text-indigo-600">{isMeDebtor ? "Ti" : expense.debtor_email}</span>
                       </p>
                     </div>
@@ -114,7 +130,6 @@ export default async function GroupDetailPage(props: {
                     <div className="flex flex-col items-end gap-2">
                       <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
                       
-                      {/* Botones inteligentes de estado */}
                       <ExpenseStatusButtons 
                         expenseId={expense.id}
                         currentStatus={expense.status}
