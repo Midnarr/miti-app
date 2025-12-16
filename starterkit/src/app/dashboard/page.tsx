@@ -73,7 +73,7 @@ export default async function DashboardPage() {
           Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
         </h1>
         <Link 
-            href="/dashboard/settings" 
+            href="/settings" 
             className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
         >
             ⚙️ <span className="hidden sm:inline">Configurar Pagos</span>
