@@ -1,96 +1,130 @@
-import { createClient } from "@/libs/supabase/server";
-import { redirect } from "next/navigation";
+import Link from "next/link";
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ message: string }>;
-}) {
-  
-  const signIn = async (formData: FormData) => {
-    "use server";
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    
-    const supabase = await createClient(); 
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return redirect("/login?message=We couldn't log in");
-    }
-
-    return redirect("/");
-  };
-
-  const signUp = async (formData: FormData) => {
-    "use server";
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    
-    const supabase = await createClient();
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      return redirect("/login?message=Error when registering");
-    }
-
-    return redirect("/login?message=Successfully registered. Check your email to confirm");
-  };
-
+export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md space-y-8 bg-white p-10 shadow rounded-xl">
-        <h2 className="text-center text-3xl font-bold tracking-tight text-gray-900">
-          Bienvenido
-        </h2>
+    <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-indigo-100 selection:text-indigo-700 overflow-x-hidden">
+      
+      {/* --- NAVBAR --- */}
+      <nav className="max-w-7xl mx-auto flex justify-between items-center p-6">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
+            Miti
+          </span>
+        </div>
+        <div className="flex gap-4">
+          <Link 
+            href="/login" 
+            className="hidden sm:block text-sm font-semibold text-gray-600 hover:text-indigo-600 transition-colors"
+          >
+            Iniciar Sesión
+          </Link>
+          <Link 
+            href="/login" // Normalmente Auth UI maneja ambos, o cambia a /register si tienes ruta aparte
+            className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition-transform active:scale-95"
+          >
+            Registrarse
+          </Link>
+        </div>
+      </nav>
+
+      {/* --- HERO SECTION --- */}
+      <section className="relative pt-20 pb-32 px-4 text-center max-w-5xl mx-auto">
         
-        <form className="mt-8 space-y-6">
-           {/* */}
-          <div className="-space-y-px rounded-md shadow-sm">
-            <div>
-              <input
-                name="email"
-                type="email"
-                required
-                className="relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Email"
-              />
-            </div>
-            <div>
-              <input
-                name="password"
-                type="password"
-                required
-                className="relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3"
-                placeholder="Password"
-              />
-            </div>
+        {/* Decoración de fondo (Glow) */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 w-[600px] h-[600px] bg-indigo-50 rounded-full blur-3xl opacity-50 pointer-events-none" />
+
+        <span className="inline-block py-1 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold mb-6 border border-indigo-100">
+          🚀 La nueva forma de dividir gastos
+        </span>
+        
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
+          Cuentas claras, <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500">
+            amistades largas.
+          </span>
+        </h1>
+        
+        <p className="text-lg md:text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+          Olvídate de perseguir a tus amigos para que te paguen. 
+          Gestiona grupos, divide tickets y sube comprobantes en segundos.
+        </p>
+
+        <div className="flex flex-col sm:flex-row justify-center gap-4">
+          <Link 
+            href="/login" 
+            className="bg-indigo-600 text-white text-lg font-bold px-8 py-4 rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl transition-all hover:-translate-y-1"
+          >
+            Empezar Gratis
+          </Link>
+          <Link 
+            href="#features" 
+            className="bg-white text-gray-700 border border-gray-200 text-lg font-bold px-8 py-4 rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            Saber más
+          </Link>
+        </div>
+      </section>
+
+      {/* --- FEATURES SECTION --- */}
+      <section id="features" className="py-20 bg-gray-50 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Todo lo que necesitas</h2>
+            <p className="text-gray-500">Diseñado para viajes, cenas, compañeros de piso y parejas.</p>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              formAction={signIn}
-              className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-            >
-              Entrar
-            </button>
-            <button
-              formAction={signUp}
-              className="group relative flex w-full justify-center rounded-md bg-white border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Registrarse
-            </button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Feature 1 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center text-2xl mb-6">
+                🍕
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Grupos y Eventos</h3>
+              <p className="text-gray-500 leading-relaxed">
+                Crea grupos para viajes o cenas. Añade miembros y registra gastos compartidos al instante.
+              </p>
+            </div>
+
+            {/* Feature 2 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center text-2xl mb-6">
+                🧾
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Sube tus Tickets</h3>
+              <p className="text-gray-500 leading-relaxed">
+                Adjunta fotos de los recibos para que no haya dudas. Transparencia total en cada cobro.
+              </p>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center text-2xl mb-6">
+                👥
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Red Social</h3>
+              <p className="text-gray-500 leading-relaxed">
+                Busca a tus amigos por @username, envíales solicitudes y dividan gastos fácilmente.
+              </p>
+            </div>
           </div>
-        </form>
-      </div>
+        </div>
+      </section>
+
+      {/* --- FOOTER --- */}
+      <footer className="bg-white py-12 border-t border-gray-200 mt-auto">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="text-center md:text-left">
+            <span className="text-xl font-extrabold text-gray-900">Miti</span>
+            <p className="text-sm text-gray-500 mt-1">© 2024 Miti App. Hecho con ❤️.</p>
+          </div>
+          <div className="flex gap-6">
+            <Link href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">Privacidad</Link>
+            <Link href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">Términos</Link>
+            <a href="https://github.com" target="_blank" className="text-gray-400 hover:text-indigo-600 transition-colors">GitHub</a>
+          </div>
+        </div>
+      </footer>
+
     </div>
   );
 }

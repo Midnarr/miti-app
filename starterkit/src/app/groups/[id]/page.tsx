@@ -89,7 +89,7 @@ export default async function GroupDetailPage(props: {
         {/* Lado Izquierdo: Título y Lista de Miembros */}
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-4">
-             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
+             <Link href="/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
              <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
           </div>
           
