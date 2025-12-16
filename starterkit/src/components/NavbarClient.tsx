@@ -24,8 +24,8 @@ export default function NavbarClient({ user }: { user: any }) {
   // 👇 AQUÍ ESTÁ LA ACTUALIZACIÓN: Agregamos "Amigos"
   const links = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Grupos", href: "/dashboard/groups" }, // Asegúrate que la ruta sea correcta
-    { name: "Amigos", href: "/dashboard/friends" }, // Nuevo enlace
+    { name: "Grupos", href: "/groups" }, // Asegúrate que la ruta sea correcta
+    { name: "Amigos", href: "/friends" }, // Nuevo enlace
   ];
 
   return (
