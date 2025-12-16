@@ -10,50 +10,34 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
   
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [requests, setRequests] = useState<any[]>([]); // Solicitudes recibidas
-  const [friends, setFriends] = useState<any[]>([]);   // Amigos confirmados
+  const [requests, setRequests] = useState<any[]>([]); 
+  const [friends, setFriends] = useState<any[]>([]);   
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null); // Para saber cuál se está borrando
 
-  // Definimos la función de carga con useCallback para poder reusarla
+  // Definimos la función de carga
   const fetchFriendsAndRequests = useCallback(async () => {
     try {
-      // ---------------------------------------------------------
-      // 1. BUSCAR SOLICITUDES PENDIENTES (Donde yo soy el receiver)
-      // ---------------------------------------------------------
-      const { data: rawRequests, error: reqError } = await supabase
+      // 1. SOLICITUDES PENDIENTES
+      const { data: rawRequests } = await supabase
         .from("friends")
-        .select("*") // Traemos todo sin intentar unir tablas automáticamente
+        .select("*")
         .eq("receiver_id", currentUserId)
         .eq("status", "pending");
 
-      if (reqError) console.error("Error cargando solicitudes:", reqError);
-
       let formattedRequests: any[] = [];
-      
       if (rawRequests && rawRequests.length > 0) {
-        // Obtenemos los IDs de quien me envió la solicitud
         const senderIds = rawRequests.map(r => r.requester_id);
-        
-        // Buscamos sus perfiles manualmente (Infalible)
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, username, email")
-          .in("id", senderIds);
+        const { data: profiles } = await supabase.from("profiles").select("id, username, email").in("id", senderIds);
 
-        // Combinamos la solicitud con el perfil del usuario
         formattedRequests = rawRequests.map(req => {
           const profile = profiles?.find(p => p.id === req.requester_id);
-          return {
-            ...req,
-            requester: profile || { username: "Desconocido", email: "..." }
-          };
+          return { ...req, requester: profile || { username: "Desconocido" } };
         });
       }
       setRequests(formattedRequests);
 
-      // ---------------------------------------------------------
-      // 2. BUSCAR AMIGOS ACEPTADOS
-      // ---------------------------------------------------------
+      // 2. AMIGOS ACEPTADOS (LÓGICA MEJORADA PARA OBTENER ID DE AMISTAD)
       const { data: rawFriends } = await supabase
         .from("friends")
         .select("*")
@@ -63,17 +47,27 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
       let formattedFriends: any[] = [];
 
       if (rawFriends && rawFriends.length > 0) {
-        // Sacamos los IDs de los amigos (excluyéndome a mí)
-        const friendIds = rawFriends.map(f => 
+        // Sacamos IDs de los usuarios amigos
+        const friendUserIds = rawFriends.map(f => 
             f.requester_id === currentUserId ? f.receiver_id : f.requester_id
         );
         
+        // Buscamos sus perfiles
         const { data: friendProfiles } = await supabase
           .from("profiles")
           .select("*")
-          .in("id", friendIds);
+          .in("id", friendUserIds);
           
-        formattedFriends = friendProfiles || [];
+        // COMBINAMOS: Perfil + ID de la Amistad (Importante para borrar)
+        formattedFriends = rawFriends.map(friendship => {
+            const otherUserId = friendship.requester_id === currentUserId ? friendship.receiver_id : friendship.requester_id;
+            const profile = friendProfiles?.find(p => p.id === otherUserId);
+            
+            return {
+                ...profile,              // Datos del usuario (username, email)
+                friendship_id: friendship.id // ID de la relación (para borrar)
+            };
+        });
       }
       setFriends(formattedFriends);
 
@@ -82,7 +76,6 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
     }
   }, [currentUserId, supabase]);
 
-  // Cargar al inicio
   useEffect(() => {
     fetchFriendsAndRequests();
   }, [fetchFriendsAndRequests]);
@@ -96,20 +89,18 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
       setSearchResults([]);
       return;
     }
-
     const { data } = await supabase
       .from("profiles")
       .select("id, username, email")
       .ilike("username", `%${term}%`)
       .neq("id", currentUserId)
       .limit(5);
-
     setSearchResults(data || []);
   };
 
   const sendRequest = async (receiverId: string) => {
     setLoading(true);
-    // Verificamos si ya existe relación inversa o directa
+    // Verificamos si ya existe relación
     const { data: existing } = await supabase.from("friends").select("*")
       .or(`and(requester_id.eq.${currentUserId},receiver_id.eq.${receiverId}),and(requester_id.eq.${receiverId},receiver_id.eq.${currentUserId})`)
       .single();
@@ -120,37 +111,43 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
       return;
     }
 
-    const { error } = await supabase.from("friends").insert({
-      requester_id: currentUserId,
-      receiver_id: receiverId,
-      status: "pending"
-    });
+    const { error } = await supabase.from("friends").insert({ requester_id: currentUserId, receiver_id: receiverId, status: "pending" });
 
-    if (error) {
-      console.error(error);
-      alert("Error al enviar solicitud.");
-    } else {
+    if (error) alert("Error al enviar solicitud.");
+    else {
       alert("¡Solicitud enviada! 🚀");
       setSearchTerm("");
       setSearchResults([]);
-      fetchFriendsAndRequests(); // Recargar por si acaso
+      fetchFriendsAndRequests();
     }
     setLoading(false);
   };
 
   const acceptRequest = async (friendshipId: string) => {
+    await supabase.from("friends").update({ status: "accepted" }).eq("id", friendshipId);
+    fetchFriendsAndRequests();
+    router.refresh();
+  };
+
+  // 👇 NUEVA FUNCIÓN: BORRAR AMIGO
+  const removeFriend = async (friendshipId: string, friendName: string) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar a @${friendName} de tus amigos?`)) return;
+
+    setDeleteLoading(friendshipId);
+    
     const { error } = await supabase
-      .from("friends")
-      .update({ status: "accepted" })
-      .eq("id", friendshipId);
+        .from("friends")
+        .delete()
+        .eq("id", friendshipId); // Borramos usando el ID de la relación
 
     if (error) {
-      console.error(error);
-      alert("Error al aceptar.");
+        console.error(error);
+        alert("Error al eliminar.");
     } else {
-      fetchFriendsAndRequests(); // Recargar la lista inmediatamente
-      router.refresh();
+        fetchFriendsAndRequests(); // Recargar lista
+        router.refresh();
     }
+    setDeleteLoading(null);
   };
 
   return (
@@ -169,15 +166,11 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
             className="w-full pl-8 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
           />
         </div>
-
-        {/* Resultados */}
         {searchResults.length > 0 && (
           <div className="mt-2 border rounded-lg overflow-hidden bg-gray-50 max-h-40 overflow-y-auto">
             {searchResults.map((user) => (
               <div key={user.id} className="flex justify-between items-center p-3 hover:bg-indigo-50 transition-colors">
-                <div>
-                  <p className="font-bold text-gray-800">@{user.username}</p>
-                </div>
+                <p className="font-bold text-gray-800">@{user.username}</p>
                 <button
                   onClick={() => sendRequest(user.id)}
                   disabled={loading}
@@ -191,11 +184,11 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
         )}
       </div>
 
-      {/* 2. SOLICITUDES PENDIENTES (AQUÍ DEBERÍA APARECER) */}
+      {/* 2. SOLICITUDES */}
       {requests.length > 0 && (
-        <div className="bg-orange-50 p-6 rounded-xl border border-orange-200 animate-fade-in">
+        <div className="bg-orange-50 p-6 rounded-xl border border-orange-200">
           <h3 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
-            🔔 Solicitudes Recibidas <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{requests.length}</span>
+            🔔 Solicitudes <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{requests.length}</span>
           </h3>
           <div className="space-y-2">
             {requests.map((req) => (
@@ -204,10 +197,7 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
                    <p className="font-bold text-gray-800">@{req.requester?.username}</p>
                    <p className="text-xs text-gray-500">Quiere conectar contigo</p>
                 </div>
-                <button 
-                  onClick={() => acceptRequest(req.id)}
-                  className="bg-green-500 text-white text-xs px-4 py-2 rounded-full font-bold hover:bg-green-600 shadow-sm transition-transform active:scale-95"
-                >
+                <button onClick={() => acceptRequest(req.id)} className="bg-green-500 text-white text-xs px-4 py-2 rounded-full font-bold hover:bg-green-600">
                   ✓ Aceptar
                 </button>
               </div>
@@ -216,22 +206,37 @@ export default function FriendSystem({ currentUserId }: { currentUserId: string 
         </div>
       )}
 
-      {/* 3. LISTA DE AMIGOS */}
+      {/* 3. LISTA DE AMIGOS (CON BOTÓN DE BORRAR) */}
       <div>
         <h3 className="font-bold text-gray-800 mb-4 text-xl">Mis Amigos ({friends.length})</h3>
         {friends.length === 0 ? (
-          <p className="text-gray-400 italic text-sm">Aún no tienes amigos. ¡Busca a alguien arriba!</p>
+          <p className="text-gray-400 italic text-sm">Aún no tienes amigos.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {friends.map((friend) => (
-              <div key={friend.id} className="bg-white p-4 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm">
-                <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center font-bold text-indigo-600">
-                  {friend.username?.charAt(0).toUpperCase() || "?"}
+              <div key={friend.friendship_id} className="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center shadow-sm hover:shadow-md transition-all">
+                
+                {/* Info Amigo */}
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center font-bold text-indigo-600">
+                    {friend.username?.charAt(0).toUpperCase() || "?"}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">@{friend.username}</p>
+                    <p className="text-xs text-gray-400 max-w-[150px] truncate">{friend.email}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-gray-900">@{friend.username}</p>
-                  <p className="text-xs text-gray-400">{friend.email}</p>
-                </div>
+
+                {/* Botón Borrar */}
+                <button
+                    onClick={() => removeFriend(friend.friendship_id, friend.username)}
+                    disabled={deleteLoading === friend.friendship_id}
+                    className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                    title="Eliminar amigo"
+                >
+                    {deleteLoading === friend.friendship_id ? "..." : "🗑️"}
+                </button>
+
               </div>
             ))}
           </div>
