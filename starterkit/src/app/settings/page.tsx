@@ -1,71 +1,52 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import ConnectMercadoPago from "@/components/ConnectMercadoPago";
 
-export default async function SettingsPage(props: {
-  searchParams: Promise<{ success?: string; error?: string }>;
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
 
-  // Obtener parámetros de la URL para mostrar mensajes de éxito/error
-  const searchParams = await props.searchParams;
-  const success = searchParams?.success;
-  const error = searchParams?.error;
-
-  // Verificamos si ya tiene el token guardado
+  // 1. Consultar si tiene el token de MP
   const { data: profile } = await supabase
     .from("profiles")
     .select("mp_access_token")
     .eq("id", user.id)
     .single();
 
+  // Convertimos a booleano (true si existe texto, false si es null)
   const isConnected = !!profile?.mp_access_token;
 
+  // Mensajes de éxito/error (opcional, por si vuelves del callback)
+  const success = searchParams?.success;
+  const error = searchParams?.error;
+
   return (
-    <div className="max-w-2xl mx-auto p-6 md:p-8">
-      {/* Botón volver */}
-      <Link href="/dashboard" className="inline-flex items-center text-gray-500 hover:text-indigo-600 mb-8 transition-colors text-sm font-medium">
-        ← Volver al Dashboard
-      </Link>
+    <div className="max-w-2xl mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-8">Configuración</h1>
 
-      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">Configuración</h1>
-
-      {/* Mensajes de feedback tras volver de Mercado Pago */}
+      {/* Mensajes de feedback */}
       {success === "mp_connected" && (
-        <div className="bg-green-50 text-green-700 p-4 rounded-xl mb-6 border border-green-200 flex items-center gap-2">
+        <div className="bg-green-100 text-green-700 p-4 rounded-lg mb-6 border border-green-200">
           ✅ ¡Tu cuenta de Mercado Pago se conectó correctamente!
         </div>
       )}
       {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-xl mb-6 border border-red-200">
-          ❌ Hubo un error al conectar Mercado Pago. Inténtalo de nuevo.
+        <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-6 border border-red-200">
+          ❌ Hubo un error al conectar. Inténtalo de nuevo.
         </div>
       )}
 
       <div className="space-y-6">
-        {/* TARJETA DE MERCADO PAGO */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-lg text-gray-800">Métodos de Cobro</h3>
-                {isConnected && <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">Activo</span>}
-            </div>
-            
-            {isConnected ? (
-                <div className="text-gray-600 text-sm">
-                    <p>✅ Ya has conectado tu cuenta.</p>
-                    <p className="mt-1">Tus amigos ahora pueden pagarte directamente usando el botón "Pagar con MP".</p>
-                </div>
-            ) : (
-                // 👈 AQUÍ USAMOS EL COMPONENTE QUE CREASTE
-                <ConnectMercadoPago /> 
-            )}
-        </div>
-
-        {/* Aquí podrías agregar más configuraciones en el futuro (cambiar nombre, avatar, etc) */}
+        {/* 👇 Aquí pasamos el estado real */}
+        <ConnectMercadoPago isConnected={isConnected} />
+        
+        {/* Aquí puedes poner más configuraciones (cambiar nombre, etc) */}
       </div>
     </div>
   );
