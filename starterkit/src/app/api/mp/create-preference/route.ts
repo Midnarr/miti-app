@@ -1,17 +1,21 @@
-import { createClient } from "@/libs/supabase/server";
+import { createClient } from "@supabase/supabase-js"; // 👈 Usamos la librería directa, no la del server
 import { NextResponse } from "next/server";
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 
 export async function POST(request: Request) {
   try {
     const { expenseId } = await request.json();
-    const supabase = await createClient();
 
-    // 1. Obtener datos del Gasto y quién lo debe cobrar (payer_id es quien paga, el acreedor es el OTRO)
-    // OJO: En tu tabla, 'payer_id' suele ser quien PAGÓ originalmente (el acreedor).
-    // El 'debtor_email' es quien debe pagar ahora.
-    
-    const { data: expense } = await supabase
+    if (!expenseId) throw new Error("Falta el ID del gasto");
+
+    // 1. Usamos la LLAVE MAESTRA (Service Role) para poder leer el token del amigo
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // 👈 Esta es la clave que acabas de agregar
+    );
+
+    // 2. Buscamos el gasto y los datos PRIVADOS del acreedor
+    const { data: expense, error } = await supabaseAdmin
       .from("expenses")
       .select(`
         *,
@@ -23,23 +27,27 @@ export async function POST(request: Request) {
       .eq("id", expenseId)
       .single();
 
-    if (!expense) throw new Error("Gasto no encontrado");
+    if (error || !expense) {
+      console.error("Error DB:", error);
+      throw new Error("Gasto no encontrado en la base de datos");
+    }
 
-    // 2. Verificar si el acreedor (amigo) tiene Mercado Pago conectado
+    // 3. Verificamos si tiene token
+    // @ts-ignore (A veces TS se queja de las relaciones anidadas)
     const receiverToken = expense.profiles?.mp_access_token;
     
     if (!receiverToken) {
       return NextResponse.json(
-        { error: "Tu amigo aún no ha conectado su cuenta de Mercado Pago." },
+        { error: "Tu amigo aún no ha conectado Mercado Pago." },
         { status: 400 }
       );
     }
 
-    // 3. Configurar Mercado Pago con el Token del AMIGO (no el tuyo)
+    // 4. Configurar Mercado Pago con el Token del AMIGO
     const client = new MercadoPagoConfig({ accessToken: receiverToken });
     const preference = new Preference(client);
 
-    // 4. Crear la preferencia de pago
+    // 5. Crear la preferencia
     const result = await preference.create({
       body: {
         items: [
@@ -47,11 +55,10 @@ export async function POST(request: Request) {
             id: expense.id,
             title: expense.description,
             quantity: 1,
-            unit_price: Number(expense.amount), // Lo que TÚ debes pagar
+            unit_price: Number(expense.amount),
             currency_id: "ARS",
           },
         ],
-        // A donde volver después de pagar
         back_urls: {
           success: `${process.env.NEXT_PUBLIC_BASE_URL}/api/mp/success-payment?expenseId=${expense.id}`,
           failure: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`,
@@ -61,11 +68,10 @@ export async function POST(request: Request) {
       }
     });
 
-    // 5. Devolver el link de pago
     return NextResponse.json({ url: result.init_point });
 
   } catch (error: any) {
-    console.error(error);
+    console.error("Error en API:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
