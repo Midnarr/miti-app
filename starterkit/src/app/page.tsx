@@ -115,12 +115,11 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-center md:text-left">
             <span className="text-xl font-extrabold text-gray-900">Miti</span>
-            <p className="text-sm text-gray-500 mt-1">© 2024 Miti App. Hecho con ❤️.</p>
+            <p className="text-sm text-gray-500 mt-1">© 2025 Miti. Hecho con ❤️.</p>
           </div>
           <div className="flex gap-6">
-            <Link href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">Privacidad</Link>
-            <Link href="#" className="text-gray-400 hover:text-indigo-600 transition-colors">Términos</Link>
-            <a href="https://github.com" target="_blank" className="text-gray-400 hover:text-indigo-600 transition-colors">GitHub</a>
+            <Link href="/privacy" className="text-gray-400 hover:text-indigo-600 transition-colors">Privacidad</Link>
+            <Link href="/terms" className="text-gray-400 hover:text-indigo-600 transition-colors">Términos</Link>
           </div>
         </div>
       </footer>
