@@ -1,73 +1,92 @@
 "use client";
 
-import { updateExpenseStatus } from "@/app/actions/expenseActions";
+import { createClient } from "@/libs/supabase/client";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-interface Props {
+export default function ExpenseStatusButtons({
+  expenseId,
+  currentStatus,
+  isDebtor,
+  isPayer
+}: {
   expenseId: string;
   currentStatus: string;
-  isDebtor: boolean; // True si YO debo pagar, False si YO cobro
-}
-
-export default function ExpenseStatusButtons({ expenseId, currentStatus, isDebtor }: Props) {
+  isDebtor: boolean;
+  isPayer: boolean;
+}) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const supabase = createClient();
 
-  // Función auxiliar para llamar a la Server Action
-  const handleStatusChange = async (newStatus: 'approved' | 'rejected' | 'paid') => {
+  // Función 1: El deudor acepta la deuda
+  const acceptExpense = async () => {
     setLoading(true);
-    try {
-      await updateExpenseStatus(expenseId, newStatus);
-    } catch (error) {
-      alert("Ocurrió un error al actualizar");
-    } finally {
-      setLoading(false);
-    }
+    await supabase.from("expenses").update({ status: "pending" }).eq("id", expenseId);
+    setLoading(false);
+    router.refresh();
   };
 
-  if (loading) return <span className="text-xs text-gray-400">Procesando...</span>;
+  // Función 2: El cobrador confirma el pago
+  const markAsPaid = async () => {
+    setLoading(true);
+    await supabase.from("expenses").update({ status: "paid" }).eq("id", expenseId);
+    setLoading(false);
+    router.refresh();
+  };
 
-  // CASO 1: Soy el DEUDOR (Me están cobrando)
-  if (isDebtor) {
-    if (currentStatus === 'pending') {
+  // ESTADO 1: PROPUESTO (Recién creado)
+  if (currentStatus === "proposed") {
+    if (isDebtor) {
       return (
-        <div className="flex gap-2">
-          <button 
-            onClick={() => handleStatusChange('approved')}
-            className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition"
-          >
-            Aprobar
-          </button>
-          <button 
-            onClick={() => handleStatusChange('rejected')}
-            className="bg-red-100 text-red-700 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition"
-          >
-            Rechazar
-          </button>
-        </div>
-      );
-    }
-    if (currentStatus === 'approved') return <span className="text-xs text-blue-600 font-medium">Esperando pago...</span>;
-    if (currentStatus === 'rejected') return <span className="text-xs text-red-600 font-medium">Rechazado por ti</span>;
-  }
-
-  // CASO 2: Soy el PAGADOR (Yo creé el gasto y quiero cobrar)
-  if (!isDebtor) {
-    if (currentStatus === 'pending') return <span className="text-xs text-gray-400 italic">Esperando aprobación...</span>;
-    if (currentStatus === 'rejected') return <span className="text-xs text-red-500 font-bold">❌ Te lo rechazaron</span>;
-    if (currentStatus === 'approved') {
-      return (
-        <button 
-          onClick={() => handleStatusChange('paid')}
-          className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold hover:bg-blue-200 transition border border-blue-300"
+        <button
+          onClick={acceptExpense}
+          disabled={loading}
+          className="bg-indigo-600 text-white text-xs px-3 py-1 rounded-full font-bold hover:bg-indigo-700 transition-colors shadow-sm"
         >
-          Marcar como Pagado
+          {loading ? "..." : "👍 Aceptar Deuda"}
         </button>
       );
     }
+    if (isPayer) {
+      return (
+        <span className="text-gray-400 text-xs italic bg-gray-100 px-2 py-1 rounded-full border border-gray-200">
+          ⏳ Esperando que acepten
+        </span>
+      );
+    }
   }
 
-  // Si ya está pagado
-  if (currentStatus === 'paid') return <span className="text-xs text-green-600 font-bold">✅ Saldado</span>;
+  // ESTADO 2: PENDIENTE (Aceptado, esperando pago)
+  if (currentStatus === "pending") {
+    if (isPayer) {
+      return (
+        <button
+          onClick={markAsPaid}
+          disabled={loading}
+          className="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold hover:bg-green-700 transition-colors shadow-sm"
+        >
+          {loading ? "..." : "💰 Confirmar Cobro"}
+        </button>
+      );
+    }
+    if (isDebtor) {
+      return (
+        <span className="text-orange-600 text-xs font-bold bg-orange-50 px-2 py-1 rounded-full border border-orange-100">
+          💸 Tienes que pagar
+        </span>
+      );
+    }
+  }
+
+  // ESTADO 3: PAGADO
+  if (currentStatus === "paid") {
+    return (
+      <span className="text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full border border-green-100 flex items-center gap-1">
+        ✅ Pagado
+      </span>
+    );
+  }
 
   return null;
 }

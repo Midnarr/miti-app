@@ -2,6 +2,8 @@ import { createClient } from "@/libs/supabase/server";
 import { notFound, redirect } from "next/navigation";
 import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
+import AddMemberForm from "@/components/AddMemberForm";
+import GroupMemberList from "@/components/GroupMemberList"; // 👈 IMPORTAR NUEVO
 import Link from "next/link";
 
 export default async function GroupDetailPage(props: {
@@ -15,176 +17,157 @@ export default async function GroupDetailPage(props: {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER GRUPO
-  const { data: group } = await supabase
+  // 1. GRUPO
+  const { data: group, error: groupError } = await supabase
     .from("groups")
     .select("*")
     .eq("id", groupId)
     .single();
 
-  if (!group) return notFound();
+  if (groupError || !group) return notFound();
 
-  // 2. OBTENER MIEMBROS (VERSIÓN LIMPIA) 🧹
-  // Ahora solo buscamos 'member_email' directamente
+  // 2. MIEMBROS (Obtener emails)
   const { data: membersData } = await supabase
     .from("group_members")
     .select("member_email") 
     .eq("group_id", groupId);
 
-  // Mapeamos directamente porque la base de datos ya asegura que no sean nulos
   const memberEmails = membersData?.map(m => m.member_email) || [];
 
-  // 3. OBTENER PERFILES (Para mostrar nombres bonitos)
-  const { data: profiles } = await supabase
+  // 🚨 SEGURIDAD
+  const currentUserEmail = user.email!.toLowerCase().trim();
+  const isMember = memberEmails.some(email => email.toLowerCase().trim() === currentUserEmail);
+  if (!isMember) return notFound();
+
+  // 3. OBTENER PERFILES COMPLETOS DE LOS MIEMBROS (Para tener Username y ID)
+  // Buscamos en la tabla profiles todos los emails que estén en este grupo
+  const { data: memberProfiles } = await supabase
     .from("profiles")
-    .select("id, email, username");
+    .select("id, email, username")
+    .in("email", memberEmails);
 
-  const idToNameMap: Record<string, string> = {};
-  const emailToNameMap: Record<string, string> = {};
-
-  profiles?.forEach((p) => {
-    const name = p.username ? `@${p.username}` : (p.email || "Usuario");
-    if (p.id) idToNameMap[p.id] = name;
-    if (p.email) emailToNameMap[p.email] = name;
+  // Formateamos la lista de miembros para el componente visual
+  const fullMembers = memberEmails.map(email => {
+    const profile = memberProfiles?.find(p => p.email === email);
+    return {
+      email: email,
+      // Si tiene perfil con username lo usamos, si no, cortamos el email
+      username: profile?.username || email.split("@")[0],
+      id: profile?.id || "unknown"
+    };
   });
 
-  const getPayerName = (payerId: string) => {
-    if (payerId === user.id) return "Tú";
-    return idToNameMap[payerId] || "Alguien";
-  };
+  // 4. AMIGOS (Para el form de agregar)
+  const { data: rawFriends } = await supabase
+    .from("friends")
+    .select("*")
+    .eq("status", "accepted")
+    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-  const getDebtorName = (debtorEmail: string) => {
-    if (debtorEmail === user.email) return "Ti";
-    return emailToNameMap[debtorEmail] || debtorEmail?.split('@')[0] || "Miembro";
-  };
+  const friendIds = rawFriends?.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id) || [];
+  const { data: profiles } = await supabase.from("profiles").select("id, email, username").in("id", friendIds);
+  
+  const myFriends = profiles?.map(p => ({
+    id: p.id,
+    friend_email: p.email,
+    friend_name: p.username || p.email?.split("@")[0]
+  })) || [];
 
-  // 4. OBTENER GASTOS
+  // 5. GASTOS
   const { data: expenses } = await supabase
     .from("expenses")
     .select("*")
     .eq("group_id", groupId)
     .order("created_at", { ascending: false });
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-ES", {
-      day: '2-digit', month: 'short'
-    });
-  };
-
   return (
-    <div className="max-w-6xl mx-auto space-y-8 p-4 md:p-8">
+    <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
       
-      {/* CABECERA */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
-        <div>
-          <div className="flex items-center gap-3">
-             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">
-               ←
-             </Link>
+      {/* CABECERA REDISEÑADA */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col lg:flex-row gap-8">
+        
+        {/* Lado Izquierdo: Título y Lista de Miembros */}
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-4">
+             <Link href="/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
              <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
           </div>
-          <p className="text-gray-500 mt-1 ml-6 text-sm">
-            Miembros: {memberEmails.join(", ")}
-          </p>
+          
+          {/* 👇 AQUÍ ESTÁ EL NUEVO COMPONENTE DE LISTA */}
+          <GroupMemberList 
+            groupId={groupId}
+            members={fullMembers}
+            currentUserId={user.id}
+            creatorId={group.created_by} // Pasamos el ID del creador
+          />
         </div>
-        <div className="bg-indigo-50 px-4 py-2 rounded-lg">
-          <span className="font-bold text-indigo-700 text-lg">Total gastos: {expenses?.length || 0}</span>
+
+        {/* Lado Derecho: Resumen Total */}
+        <div className="flex flex-col items-end justify-start">
+           <div className="bg-indigo-50 px-6 py-4 rounded-xl text-center">
+              <span className="block text-3xl font-bold text-indigo-700">{expenses?.length || 0}</span>
+              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Gastos Totales</span>
+           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* IZQUIERDA: FORMULARIO */}
+        {/* COLUMNA IZQUIERDA: Formularios */}
         <div className="lg:col-span-1">
           <div className="sticky top-8">
-            <CreateGroupExpenseForm 
-              groupId={groupId} 
-              members={memberEmails} // Pasamos la lista limpia de strings
-              currentUserEmail={user.email!}
-            />
+            <AddMemberForm groupId={groupId} friends={myFriends} existingEmails={memberEmails} />
+            <CreateGroupExpenseForm groupId={groupId} members={memberEmails} currentUserEmail={user.email!} friends={myFriends} />
           </div>
         </div>
 
-        {/* DERECHA: LISTA DE GASTOS */}
+        {/* COLUMNA DERECHA: Lista de Gastos */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="font-bold text-xl text-gray-800">Historial del Grupo</h2>
-          
-          {expenses?.length === 0 ? (
-            <div className="bg-white p-12 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
-              <p className="mb-2 text-4xl">💸</p>
-              <p>No hay gastos registrados aún.</p>
-              <p className="text-sm">¡Sé el primero en agregar uno!</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {expenses?.map((expense) => {
-                const isMePayer = expense.payer_id === user.id;
-                const isMeDebtor = expense.debtor_email === user.email;
-                
-                // Estilos dinámicos
-                let cardStyle = "bg-white border-l-4 border-gray-200"; 
-                if (isMeDebtor && expense.status === 'pending') cardStyle = "bg-orange-50/50 border-l-4 border-orange-400";
-                if (isMePayer && expense.status === 'pending') cardStyle = "bg-indigo-50/50 border-l-4 border-indigo-500";
-                if (expense.status === 'paid') cardStyle = "bg-green-50/30 border-l-4 border-green-400 opacity-75";
+           <h2 className="font-bold text-xl text-gray-800">Historial</h2>
+           {!expenses || expenses.length === 0 ? (
+              <div className="bg-white p-12 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
+                <p className="mb-2 text-4xl">💸</p>
+                <p>No hay gastos registrados aún.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {expenses.map((expense) => {
+                  const expenseDebtor = expense.debtor_email.toLowerCase().trim();
+                  const isMePayer = expense.payer_id === user.id;
+                  const isMeDebtor = expenseDebtor === currentUserEmail;
 
-                return (
-                  <div key={expense.id} className={`p-5 rounded-lg shadow-sm border border-gray-100 ${cardStyle} transition-all hover:shadow-md`}>
-                    <div className="flex justify-between items-start gap-4">
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
-                          {expense.status === 'paid' && (
-                            <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Pagado</span>
-                          )}
+                  let labelText = isMePayer ? "Le cobraste a:" : (isMeDebtor ? "Te cobraron a:" : "Le cobraron a:");
+                  let valueText = isMePayer ? (isMeDebtor ? "Ti mismo" : expense.debtor_email) : (isMeDebtor ? "Ti" : expense.debtor_email);
+                  
+                  // Intentamos buscar el username del deudor para que se vea bonito en la tarjeta también
+                  const debtorProfile = memberProfiles?.find(p => p.email === expenseDebtor);
+                  const debtorName = debtorProfile?.username ? `@${debtorProfile.username}` : valueText;
+
+                  let borderColor = "border-gray-100";
+                  if (expense.status === 'proposed') borderColor = "border-indigo-200";
+                  if (expense.status === 'pending') borderColor = "border-orange-200";
+                  if (expense.status === 'paid') borderColor = "border-green-200";
+
+                  return (
+                    <div key={expense.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${borderColor} flex justify-between items-center transition-all hover:shadow-md`}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-900">{expense.description}</p>
+                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors">📎 Ticket</a>}
                         </div>
-                        
-                        <p className="text-sm text-gray-600 mb-3">
-                          <span className="font-semibold text-indigo-700">{getPayerName(expense.payer_id)}</span> pagó por{" "}
-                          <span className="font-semibold text-orange-700">{getDebtorName(expense.debtor_email)}</span>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {labelText} <span className="font-medium text-indigo-600">{debtorName}</span>
                         </p>
-
-                        <div className="flex items-center gap-3 text-sm">
-                           {expense.original_amount && expense.original_amount !== expense.amount ? (
-                              <>
-                                <span className="text-gray-400 line-through text-xs">${expense.original_amount}</span>
-                                <span className={`font-bold px-2 py-1 rounded border ${
-                                  isMeDebtor ? "bg-orange-100 text-orange-800 border-orange-200" : "bg-gray-100 text-gray-800 border-gray-200"
-                                }`}>
-                                  ${expense.amount}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="font-bold bg-gray-100 px-2 py-1 rounded text-gray-800 border border-gray-200">
-                                ${expense.amount}
-                              </span>
-                            )}
-                            
-                            {expense.receipt_url && (
-                            <a href={expense.receipt_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs flex items-center gap-1">
-                              📎 Recibo
-                            </a>
-                          )}
-                        </div>
                       </div>
-
                       <div className="flex flex-col items-end gap-2">
-                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
-                        {(isMePayer || isMeDebtor) && (
-                          <ExpenseStatusButtons 
-                            expenseId={expense.id} 
-                            currentStatus={expense.status} 
-                            isDebtor={isMeDebtor} 
-                          />
-                        )}
+                        <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
+                        <ExpenseStatusButtons expenseId={expense.id} currentStatus={expense.status} isDebtor={isMeDebtor} isPayer={isMePayer} />
                       </div>
-
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
         </div>
       </div>
     </div>

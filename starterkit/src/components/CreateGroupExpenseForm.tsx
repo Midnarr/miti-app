@@ -1,144 +1,182 @@
 "use client";
 
 import { createClient } from "@/libs/supabase/client";
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState, useRef } from "react";
 
-interface Props {
+export default function CreateGroupExpenseForm({
+  groupId,
+  members,
+  currentUserEmail,
+  friends = []
+}: {
   groupId: string;
-  members: { id: string; user_email: string }[];
+  members: string[];
   currentUserEmail: string;
-}
-
-export default function CreateGroupExpenseForm({ groupId, members, currentUserEmail }: Props) {
-  const [loading, setLoading] = useState(false);
+  friends?: any[];
+}) {
   const router = useRouter();
-  const supabase = createClient();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const friends = members.filter(m => m.user_email !== currentUserEmail);
-  const totalMembersCount = members.length;
+  const availableDebtors = members.filter(email => email !== currentUserEmail);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const getFriendName = (email: string) => {
+    const friend = friends.find(f => f.friend_email === email);
+    return friend ? friend.friend_name : email.split("@")[0];
+  };
+
+  const handleSubmit = async (formData: FormData) => {
     setLoading(true);
-
-    const formData = new FormData(e.currentTarget);
+    setError(null);
+    
     const description = formData.get("description") as string;
-    const totalAmount = parseFloat(formData.get("amount") as string);
-    const selectedDebtor = formData.get("debtorEmail") as string;
-    const file = formData.get("receipt") as File;
+    const amountStr = formData.get("amount") as string;
+    const selectedDebtors = formData.getAll("debtors") as string[];
+    const file = formData.get("receipt") as File; // 👈 OBTENEMOS EL ARCHIVO
 
-    if (!selectedDebtor) { alert("Selecciona a quién cobrarle"); setLoading(false); return; }
-    if (isNaN(totalAmount) || totalAmount <= 0) { alert("Monto inválido"); setLoading(false); return; }
+    const amount = parseFloat(amountStr);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    let receiptUrl: string | null = null;
+    if (!user) return;
 
     try {
-      // 1. SUBIDA DE IMAGEN
+      if (!amount || amount <= 0) throw new Error("Ingresa un monto válido.");
+      if (!description) throw new Error("Falta la descripción.");
+      if (selectedDebtors.length === 0) throw new Error("Selecciona al menos a una persona.");
+
+      // --- 1. SUBIDA DE IMAGEN (Si existe) ---
+      let receiptUrl = null;
+      
       if (file && file.size > 0) {
+        // Validar tamaño (ej: máx 5MB)
+        if (file.size > 5 * 1024 * 1024) throw new Error("La imagen es muy pesada (máx 5MB).");
+
         const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        
+        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+        const filePath = `${user.id}/${fileName}`; // Carpeta por usuario para ordenar
+
         const { error: uploadError } = await supabase.storage
-          .from("receipts")
-          .upload(fileName, file);
+          .from('receipts')
+          .upload(filePath, file);
 
-        if (uploadError) throw new Error("Error subiendo imagen: " + uploadError.message);
+        if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage
-          .from("receipts")
-          .getPublicUrl(fileName);
+        // Obtener la URL pública para guardarla
+        const { data: urlData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
           
-        receiptUrl = data.publicUrl;
+        receiptUrl = urlData.publicUrl;
       }
 
-      // 2. LÓGICA DE GASTOS
-      if (selectedDebtor === "SPLIT_ALL") {
-        // Dividir entre todos
-        const amountPerPerson = totalAmount / totalMembersCount;
-        
-        const expensesToCreate = friends.map(friend => {
-          return supabase.from("expenses").insert({
-            description: `${description} (Dividido)`,
-            amount: amountPerPerson,
-            original_amount: totalAmount, // Guardamos el total del ticket
-            debtor_email: friend.user_email,
-            receipt_url: receiptUrl, // <--- La misma URL para todos
-            group_id: groupId,
-          });
-        });
-        await Promise.all(expensesToCreate);
+      // --- 2. LOGICA DE DIVISIÓN ---
+      const totalPeople = selectedDebtors.length + 1;
+      const amountPerPerson = amount / totalPeople;
 
-      } else {
-        // Cobrar a uno solo
-        await supabase.from("expenses").insert({
-          description,
-          amount: totalAmount,
-          original_amount: totalAmount,
-          debtor_email: selectedDebtor,
-          receipt_url: receiptUrl,
-          group_id: groupId,
-        });
-      }
+      const expensesToInsert = selectedDebtors.map(debtorEmail => ({
+        description,
+        amount: amountPerPerson,
+        original_amount: amount,
+        payer_id: user.id,
+        debtor_email: debtorEmail,
+        group_id: groupId,
+        status: "proposed",
+        receipt_url: receiptUrl, // 👈 GUARDAMOS LA URL AQUÍ
+      }));
 
+      const { error: insertError } = await supabase
+        .from("expenses")
+        .insert(expensesToInsert);
+
+      if (insertError) throw insertError;
+
+      formRef.current?.reset();
       router.refresh();
-      (e.target as HTMLFormElement).reset();
-
-    } catch (error: any) {
-      alert(error.message);
+      
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const checkboxes = formRef.current?.querySelectorAll('input[name="debtors"]');
+    checkboxes?.forEach((cb: any) => cb.checked = e.target.checked);
+  }
+
   return (
-    <div className="bg-white p-6 rounded-xl shadow border h-fit">
-      <h3 className="font-bold text-gray-700 mb-4">💸 Agregar Gasto al Grupo</h3>
+    <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
+      <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+        🧾 Nuevo Gasto
+      </h3>
       
-      {friends.length === 0 ? (
-        <p className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded">
-          ⚠️ Invita amigos al grupo para dividir gastos.
-        </p>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Descripción</label>
-            <input name="description" required placeholder="Ej: Asado, Bebidas..." className="w-full border rounded p-2 text-sm" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Monto Total ($)</label>
-              <input name="amount" type="number" step="0.01" required placeholder="0.00" className="w-full border rounded p-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">¿A quién cobras?</label>
-              <select name="debtorEmail" required className="w-full border rounded p-2 text-sm bg-white cursor-pointer">
-                <option value="">Seleccionar...</option>
-                <option value="SPLIT_ALL" className="font-bold text-indigo-600">⚡ Dividir entre todos ({totalMembersCount})</option>
-                <hr />
-                {friends.map(m => (
-                  <option key={m.id} value={m.user_email}>Solo a {m.user_email}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Foto (Opcional)</label>
-            <input 
-              name="receipt" 
-              type="file" 
-              accept="image/*" 
-              className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200" 
-            />
-          </div>
-
-          <button disabled={loading} className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-bold shadow-sm">
-            {loading ? "Subiendo..." : "Crear Gasto"}
-          </button>
-        </form>
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 text-red-700 text-xs rounded border border-red-100 font-medium">
+          ⚠️ {error}
+        </div>
       )}
+
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
+        
+        {/* Descripción */}
+        <div>
+           <label className="text-xs font-bold text-gray-500 uppercase">Descripción</label>
+           <input name="description" required placeholder="Ej: Cena" className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+        
+        {/* Monto */}
+        <div>
+           <label className="text-xs font-bold text-gray-500 uppercase">Monto Total ($)</label>
+           <input name="amount" type="number" step="0.01" required placeholder="0.00" className="w-full border border-gray-300 p-2 rounded-lg text-sm mt-1 focus:ring-2 focus:ring-indigo-500 outline-none" />
+        </div>
+
+        {/* FOTO DEL COMPROBANTE (NUEVO) */}
+        <div>
+          <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Foto del Ticket (Opcional)</label>
+          <input 
+            type="file" 
+            name="receipt" 
+            accept="image/*"
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+          />
+        </div>
+
+        {/* SELECCIÓN DE MIEMBROS */}
+        <div>
+           <div className="flex justify-between items-end mb-2">
+             <label className="text-xs font-bold text-gray-500 uppercase">Dividir entre:</label>
+             <label className="text-xs text-indigo-600 flex items-center gap-1 cursor-pointer font-medium hover:underline">
+               <input type="checkbox" onChange={toggleAll} className="rounded text-indigo-600 focus:ring-indigo-500" />
+               Todos
+             </label>
+           </div>
+           
+           <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 max-h-48 overflow-y-auto space-y-2">
+               {availableDebtors.length === 0 ? (
+                 <p className="text-xs text-gray-400 italic">No hay otros miembros.</p>
+               ) : (
+                 availableDebtors.map(email => (
+                   <label key={email} className="flex items-center gap-3 p-2 hover:bg-white hover:shadow-sm rounded cursor-pointer transition-all">
+                     <input type="checkbox" name="debtors" value={email} className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" />
+                     <div className="text-sm">
+                       <span className="font-bold text-gray-700 block">{getFriendName(email)}</span>
+                       <span className="text-xs text-gray-400">{email}</span>
+                     </div>
+                   </label>
+                 ))
+               )}
+           </div>
+        </div>
+
+        <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 text-sm shadow-sm">
+          {loading ? "Subiendo..." : "Dividir y Crear"}
+        </button>
+      </form>
     </div>
   );
 }
