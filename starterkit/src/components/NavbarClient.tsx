@@ -22,8 +22,8 @@ export default function NavbarClient({ user }: { user: any }) {
 
   const links = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Grupos", href: "/dashboard/groups" }, // Ajusté la ruta a /dashboard/groups por convención
-    { name: "Amigos", href: "/dashboard/friends" }, // Ajusté la ruta a /dashboard/friends
+    { name: "Grupos", href: "/groups" }, // Ajusté la ruta a /dashboard/groups por convención
+    { name: "Amigos", href: "/friends" }, // Ajusté la ruta a /dashboard/friends
   ];
 
   return (
@@ -129,7 +129,7 @@ export default function NavbarClient({ user }: { user: any }) {
             <div className="space-y-1 px-4">
               {/* 👇 ENLACE DE CONFIGURACIÓN MÓVIL (NUEVO) */}
               <Link
-                href="/dashboard/settings"
+                href="/settings"
                 className="flex items-center gap-2 w-full text-left px-4 py-2 border border-gray-200 text-gray-600 rounded-md hover:bg-gray-50 mb-2"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
