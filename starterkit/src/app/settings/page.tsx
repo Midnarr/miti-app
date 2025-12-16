@@ -1,7 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import ConnectMercadoPago from "@/components/ConnectMercadoPago"; // 👈 Importamos el botón
+import ConnectMercadoPago from "@/components/ConnectMercadoPago";
 
 export default async function SettingsPage(props: {
   searchParams: Promise<{ success?: string; error?: string }>;
