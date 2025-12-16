@@ -1,5 +1,6 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link"; // 👈 IMPORTANTE
 import CreateExpenseForm from "@/components/CreateExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 
@@ -9,14 +10,13 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL (Para mostrar el Username correcto)
+  // 1. OBTENER MI PERFIL
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
     .eq("id", user.id)
     .single();
 
-  // Si tiene username lo usamos, si no, usamos la primera parte del email como respaldo
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
   // 2. OBTENER GASTOS
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // 3. OBTENER AMIGOS (Lógica Social Correcta)
+  // 3. OBTENER AMIGOS
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
@@ -58,10 +58,22 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
-      {/* Saludo actualizado con Username */}
-      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
-        Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
-      </h1>
+      
+      {/* --- ENCABEZADO CON BOTÓN DE CONFIGURACIÓN --- */}
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-extrabold text-gray-900">
+          Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
+        </h1>
+
+        {/* 👇 BOTÓN NUEVO */}
+        <Link 
+            href="/dashboard/settings" 
+            className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
+        >
+            ⚙️ <span className="hidden sm:inline">Configurar Pagos</span>
+        </Link>
+      </div>
+      {/* --------------------------------------------- */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
         
@@ -115,11 +127,11 @@ export default async function DashboardPage() {
                 {owedToMe.map((expense) => (
                   <div key={expense.id} className="p-4 rounded-lg border border-gray-100 hover:shadow-md transition-shadow bg-gray-50/50">
                     <div className="flex justify-between items-start mb-2">
-                       <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1">
                           <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
                           {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
-                       </div>
-                       <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                     </div>
                     <p className="text-sm text-gray-600 mb-3">A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span></p>
                     <div className="flex justify-between items-end">
