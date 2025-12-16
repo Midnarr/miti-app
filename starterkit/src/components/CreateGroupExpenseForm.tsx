@@ -112,7 +112,7 @@ export default function CreateGroupExpenseForm({
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100">
       <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-        🧾 Nuevo Gasto con Recibo
+        🧾 Nuevo Gasto
       </h3>
       
       {error && (
