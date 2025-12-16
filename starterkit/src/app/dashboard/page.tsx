@@ -9,7 +9,17 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER GASTOS
+  // 1. OBTENER MI PERFIL (Para mostrar el Username correcto)
+  const { data: myProfile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .single();
+
+  // Si tiene username lo usamos, si no, usamos la primera parte del email como respaldo
+  const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
+
+  // 2. OBTENER GASTOS
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select("*, groups(name)")
@@ -18,48 +28,39 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // ---------------------------------------------------------------
-  // 2. OBTENER AMIGOS (LÓGICA NUEVA: SISTEMA SOCIAL)
-  // ---------------------------------------------------------------
-  
-  // A. Buscamos las conexiones aceptadas
+  // 3. OBTENER AMIGOS (Lógica Social Correcta)
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
     .eq("status", "accepted")
     .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-  // B. Sacamos los IDs de los amigos (excluyéndome a mí)
   const friendIds = rawFriends?.map(f => 
       f.requester_id === user.id ? f.receiver_id : f.requester_id
   ) || [];
 
-  // C. Buscamos sus perfiles (username y email)
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, email, username")
     .in("id", friendIds);
 
-  // D. Mapeamos al formato que esperan los formularios
-  // (Convertimos 'username' en 'friend_name' para que el formulario no se rompa)
   const myFriends = profiles?.map(p => ({
     id: p.id,
     friend_email: p.email,
-    friend_name: p.username || p.email?.split("@")[0] // Usamos el username como nombre
+    friend_name: p.username || p.email?.split("@")[0]
   })) || [];
   
-  // ---------------------------------------------------------------
-
+  // Filtros de Deuda
   const iOwe = expenses.filter((e) => e.debtor_email === user.email && e.status !== "paid");
   const owedToMe = expenses.filter((e) => e.payer_id === user.id);
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-  const username = user.email?.split("@")[0];
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+      {/* Saludo actualizado con Username */}
       <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
-        Hola, <span className="text-indigo-600">{username}</span> 👋
+        Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
       </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
