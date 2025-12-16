@@ -1,92 +1,96 @@
 "use client";
 
+import { useState } from "react";
 import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
-export default function ExpenseStatusButtons({
-  expenseId,
-  currentStatus,
+export default function ExpenseStatusButtons({ 
+  expenseId, 
+  currentStatus, 
   isDebtor,
-  isPayer
-}: {
-  expenseId: string;
-  currentStatus: string;
-  isDebtor: boolean;
-  isPayer: boolean;
+  isPayer 
+}: { 
+  expenseId: string, 
+  currentStatus: string, 
+  isDebtor: boolean,
+  isPayer: boolean 
 }) {
+  const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
 
-  // Función 1: El deudor acepta la deuda
-  const acceptExpense = async () => {
-    setLoading(true);
-    await supabase.from("expenses").update({ status: "pending" }).eq("id", expenseId);
-    setLoading(false);
-    router.refresh();
-  };
-
-  // Función 2: El cobrador confirma el pago
+  // Función para marcar como pagado manualmente (para efectivo/transferencia)
   const markAsPaid = async () => {
     setLoading(true);
     await supabase.from("expenses").update({ status: "paid" }).eq("id", expenseId);
-    setLoading(false);
     router.refresh();
+    setLoading(false);
   };
 
-  // ESTADO 1: PROPUESTO (Recién creado)
-  if (currentStatus === "proposed") {
-    if (isDebtor) {
-      return (
-        <button
-          onClick={acceptExpense}
-          disabled={loading}
-          className="bg-indigo-600 text-white text-xs px-3 py-1 rounded-full font-bold hover:bg-indigo-700 transition-colors shadow-sm"
-        >
-          {loading ? "..." : "👍 Aceptar Deuda"}
-        </button>
-      );
+  // 👇 NUEVA FUNCIÓN: Pagar con Mercado Pago
+  const handlePayWithMP = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/mp/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expenseId }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        alert("Error: " + data.error);
+        setLoading(false);
+      } else if (data.url) {
+        // Redirigir a Mercado Pago
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Ocurrió un error al conectar con Mercado Pago");
+      setLoading(false);
     }
-    if (isPayer) {
-      return (
-        <span className="text-gray-400 text-xs italic bg-gray-100 px-2 py-1 rounded-full border border-gray-200">
-          ⏳ Esperando que acepten
-        </span>
-      );
-    }
+  };
+
+  if (currentStatus === "paid") {
+    return <span className="text-green-600 font-bold text-sm bg-green-50 px-2 py-1 rounded">✅ Pagado</span>;
   }
 
-  // ESTADO 2: PENDIENTE (Aceptado, esperando pago)
-  if (currentStatus === "pending") {
-    if (isPayer) {
-      return (
+  return (
+    <div className="flex gap-2">
+      {/* Si yo debo pagar, muestro opción de MP */}
+      {isDebtor && (
+        <>
+           <button
+            onClick={handlePayWithMP}
+            disabled={loading}
+            className="bg-[#009EE3] hover:bg-[#008ED6] text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
+          >
+            {loading ? "..." : "📲 Pagar con MP"}
+          </button>
+          
+          {/* Opción manual por si pagan en efectivo */}
+          <button 
+            onClick={markAsPaid} 
+            disabled={loading}
+            className="text-gray-400 hover:text-gray-600 text-[10px] underline"
+          >
+            Marcar pagado (Efectivo)
+          </button>
+        </>
+      )}
+
+      {/* Si a mí me deben, solo puedo marcar como pagado manual */}
+      {isPayer && (
         <button
           onClick={markAsPaid}
           disabled={loading}
-          className="bg-green-600 text-white text-xs px-3 py-1 rounded-full font-bold hover:bg-green-700 transition-colors shadow-sm"
+          className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-md transition-colors"
         >
-          {loading ? "..." : "💰 Confirmar Cobro"}
+          {loading ? "..." : "Marcar como cobrado"}
         </button>
-      );
-    }
-    if (isDebtor) {
-      return (
-        <span className="text-orange-600 text-xs font-bold bg-orange-50 px-2 py-1 rounded-full border border-orange-100">
-          💸 Tienes que pagar
-        </span>
-      );
-    }
-  }
-
-  // ESTADO 3: PAGADO
-  if (currentStatus === "paid") {
-    return (
-      <span className="text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full border border-green-100 flex items-center gap-1">
-        ✅ Pagado
-      </span>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }
