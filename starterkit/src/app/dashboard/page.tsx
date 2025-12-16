@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. Obtener gastos
+  // 1. OBTENER GASTOS
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select("*, groups(name)")
@@ -18,22 +18,42 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // 2. Obtener amigos (para el formulario)
-  const { data: friends } = await supabase
+  // ---------------------------------------------------------------
+  // 2. OBTENER AMIGOS (LÓGICA NUEVA: SISTEMA SOCIAL)
+  // ---------------------------------------------------------------
+  
+  // A. Buscamos las conexiones aceptadas
+  const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
-    .order("friend_name", { ascending: true });
+    .eq("status", "accepted")
+    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-  const myFriends = friends || [];
+  // B. Sacamos los IDs de los amigos (excluyéndome a mí)
+  const friendIds = rawFriends?.map(f => 
+      f.requester_id === user.id ? f.receiver_id : f.requester_id
+  ) || [];
 
-  // Filtros
+  // C. Buscamos sus perfiles (username y email)
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, email, username")
+    .in("id", friendIds);
+
+  // D. Mapeamos al formato que esperan los formularios
+  // (Convertimos 'username' en 'friend_name' para que el formulario no se rompa)
+  const myFriends = profiles?.map(p => ({
+    id: p.id,
+    friend_email: p.email,
+    friend_name: p.username || p.email?.split("@")[0] // Usamos el username como nombre
+  })) || [];
+  
+  // ---------------------------------------------------------------
+
   const iOwe = expenses.filter((e) => e.debtor_email === user.email && e.status !== "paid");
   const owedToMe = expenses.filter((e) => e.payer_id === user.id);
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-  };
-  
+  const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
   const username = user.email?.split("@")[0];
 
   return (
@@ -52,53 +72,31 @@ export default async function DashboardPage() {
         {/* COLUMNA DERECHA: Resúmenes */}
         <div className="md:col-span-2 space-y-8">
           
-          {/* --- SECCIÓN 1: TIENES QUE PAGAR --- */}
+          {/* TIENES QUE PAGAR */}
           <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
             <div className="flex items-center gap-3 mb-6">
               <h2 className="font-bold text-xl text-gray-800">🔔 Tienes que pagar</h2>
               {iOwe.length > 0 && <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">{iOwe.length} nuevos</span>}
             </div>
 
-            {iOwe.length === 0 ? (
-              <p className="text-gray-500 text-sm">¡Estás al día! 🎉</p>
-            ) : (
+            {iOwe.length === 0 ? <p className="text-gray-500 text-sm">¡Estás al día! 🎉</p> : (
               <div className="space-y-4">
                 {iOwe.map((expense) => (
                   <div key={expense.id} className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm">
-                    {/* Fila Superior */}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          {(expense.groups as any)?.name && (
-                            <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
-                              #{(expense.groups as any).name}
-                            </span>
-                          )}
+                          {(expense.groups as any)?.name && <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">#{(expense.groups as any).name}</span>}
                           <span className="font-bold text-gray-900">{expense.description}</span>
                         </div>
-                        
-                        {/* 📎 BOTÓN DE RECIBO (Azul y visible) */}
-                        {expense.receipt_url && (
-                          <a 
-                            href={expense.receipt_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
-                          >
-                            📎 Ver Ticket
-                          </a>
-                        )}
+                        {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
                       </div>
                       <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                     </div>
-
-                    {/* Fila Inferior */}
                     <div className="flex justify-between items-end">
                       <div className="text-sm text-gray-600">
                         <span className="mr-2">Total: ${expense.original_amount}</span>
-                        <span className="bg-orange-100 text-orange-800 font-bold px-2 py-1 rounded-md">
-                          Tu parte: ${expense.amount}
-                        </span>
+                        <span className="bg-orange-100 text-orange-800 font-bold px-2 py-1 rounded-md">Tu parte: ${expense.amount}</span>
                       </div>
                       <ExpenseStatusButtons expenseId={expense.id} currentStatus={expense.status} isDebtor={true} isPayer={false} />
                     </div>
@@ -108,47 +106,25 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* --- SECCIÓN 2: TE DEBEN A TI --- */}
+          {/* TE DEBEN A TI */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
              <h2 className="font-bold text-xl text-gray-800 mb-6">💰 Te deben a ti</h2>
-             
-             {owedToMe.length === 0 ? (
-              <p className="text-gray-500 text-sm">Nadie te debe dinero.</p>
-            ) : (
+             {owedToMe.length === 0 ? <p className="text-gray-500 text-sm">Nadie te debe dinero.</p> : (
               <div className="space-y-4">
                 {owedToMe.map((expense) => (
                   <div key={expense.id} className="p-4 rounded-lg border border-gray-100 hover:shadow-md transition-shadow bg-gray-50/50">
-                    {/* Fila Superior */}
                     <div className="flex justify-between items-start mb-2">
                        <div className="flex flex-col gap-1">
                           <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
-                          
-                          {/* 📎 BOTÓN DE RECIBO (Azul y visible) */}
-                          {expense.receipt_url && (
-                            <a 
-                              href={expense.receipt_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
-                            >
-                              📎 Ver Ticket
-                            </a>
-                          )}
+                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
                        </div>
                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                     </div>
-
-                    <p className="text-sm text-gray-600 mb-3">
-                      A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span>
-                    </p>
-
-                    {/* Fila Inferior */}
+                    <p className="text-sm text-gray-600 mb-3">A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span></p>
                     <div className="flex justify-between items-end">
                       <div className="text-sm text-gray-600">
                         <span className="mr-2">Total: ${expense.original_amount}</span>
-                        <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">
-                          Te debe: ${expense.amount}
-                        </span>
+                        <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
                       </div>
                       <ExpenseStatusButtons expenseId={expense.id} currentStatus={expense.status} isDebtor={false} isPayer={true} />
                     </div>
