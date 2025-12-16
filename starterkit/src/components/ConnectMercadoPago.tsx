@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function ConnectMercadoPago() {
   const APP_ID = "2174862485117323"; 
-  const REDIRECT_URI = "https://https://miti-app.vercel.app/api/mp/callback";
+  const REDIRECT_URI = "https://miti-app.vercel.app/api/mp/callback";
   
   const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=${APP_ID}&response_type=code&platform_id=mp&state=random_id&redirect_uri=${REDIRECT_URI}`;
 
