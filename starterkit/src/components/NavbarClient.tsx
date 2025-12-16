@@ -12,31 +12,29 @@ export default function NavbarClient({ user }: { user: any }) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // FORZAMOS RECARGA COMPLETA: Esto limpia caché y quita el email sí o sí
+    // FORZAMOS RECARGA: Limpia caché y estado de autenticación
     window.location.href = "/login";
   };
 
   const isActive = (path: string) => pathname === path;
 
-  // Si no hay usuario, no mostramos nada
   if (!user) return null;
 
-  // 👇 AQUÍ ESTÁ LA ACTUALIZACIÓN: Agregamos "Amigos"
   const links = [
     { name: "Dashboard", href: "/dashboard" },
-    { name: "Grupos", href: "/groups" }, // Asegúrate que la ruta sea correcta
-    { name: "Amigos", href: "/friends" }, // Nuevo enlace
+    { name: "Grupos", href: "/dashboard/groups" }, // Ajusté la ruta a /dashboard/groups por convención
+    { name: "Amigos", href: "/dashboard/friends" }, // Ajusté la ruta a /dashboard/friends
   ];
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
+    <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           
           {/* LOGO y LINKS ESCRITORIO */}
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link href="/dashboard" className="font-bold text-xl text-indigo-600">
+              <Link href="/dashboard" className="font-black text-2xl text-indigo-600 tracking-tighter hover:opacity-80">
                 Miti
               </Link>
             </div>
@@ -57,11 +55,25 @@ export default function NavbarClient({ user }: { user: any }) {
             </div>
           </div>
 
-          {/* PERFIL Y LOGOUT (Desktop) */}
+          {/* PERFIL, CONFIG Y LOGOUT (Desktop) */}
           <div className="hidden sm:ml-6 sm:flex sm:items-center sm:gap-4">
-            <span className="text-sm text-gray-600 font-medium">
-              {user.email}
+            
+            {/* 👇 ÍCONO DE CONFIGURACIÓN (NUEVO) */}
+            <Link 
+              href="/dashboard/settings" 
+              className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-full transition-all"
+              title="Configuración"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.35a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </Link>
+
+            <span className="text-sm text-gray-600 font-medium hidden md:block">
+              {user.email?.split("@")[0]}
             </span>
+            
             <button
               onClick={handleLogout}
               className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-100 px-3 py-1 rounded-md hover:bg-red-50 transition-colors"
@@ -108,11 +120,22 @@ export default function NavbarClient({ user }: { user: any }) {
               </Link>
             ))}
           </div>
+          
           <div className="pt-4 pb-4 border-t border-gray-200">
             <div className="flex items-center px-4 mb-3">
               <div className="text-sm font-medium text-gray-800">{user.email}</div>
             </div>
+            
             <div className="space-y-1 px-4">
+              {/* 👇 ENLACE DE CONFIGURACIÓN MÓVIL (NUEVO) */}
+              <Link
+                href="/dashboard/settings"
+                className="flex items-center gap-2 w-full text-left px-4 py-2 border border-gray-200 text-gray-600 rounded-md hover:bg-gray-50 mb-2"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                ⚙️ Configuración
+              </Link>
+
               <button
                 onClick={handleLogout}
                 className="block w-full text-center px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50"

@@ -1,6 +1,5 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import CreateExpenseForm from "@/components/CreateExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 
@@ -10,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL
+  // 1. OBTENER MI PERFIL (Para mostrar mi nombre)
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
@@ -19,8 +18,8 @@ export default async function DashboardPage() {
 
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
-  // 2. OBTENER GASTOS (Actualizado con el nombre del acreedor)
-  // 👇 Fíjate que agregamos "payer:profiles!payer_id(username, email)"
+  // 2. OBTENER GASTOS
+  // Usamos el apodo 'payer' y la notación !payer_id que arreglamos antes
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select(`
@@ -67,18 +66,10 @@ export default async function DashboardPage() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
       
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-extrabold text-gray-900">
-          Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
-        </h1>
-        <Link 
-            href="/settings" 
-            className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
-        >
-            ⚙️ <span className="hidden sm:inline">Configurar Pagos</span>
-        </Link>
-      </div>
+      {/* HEADER LIMPIO (Solo saludo) */}
+      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
+        Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
+      </h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
         
@@ -100,7 +91,7 @@ export default async function DashboardPage() {
             {iOwe.length === 0 ? <p className="text-gray-500 text-sm">¡Estás al día! 🎉</p> : (
               <div className="space-y-4">
                 {iOwe.map((expense) => {
-                  // 👇 Obtenemos el nombre del acreedor
+                  // Calcular nombre del acreedor
                   // @ts-ignore
                   const lenderName = expense.payer?.username || expense.payer?.email?.split("@")[0] || "Desconocido";
 
@@ -117,7 +108,7 @@ export default async function DashboardPage() {
                         <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                       </div>
                       
-                      {/* 👇 AQUÍ MOSTRAMOS A QUIÉN LE DEBES */}
+                      {/* Nombre del acreedor */}
                       <p className="text-xs text-gray-500 mb-3">
                         Le debes a: <span className="font-bold text-orange-600">@{lenderName}</span>
                       </p>
