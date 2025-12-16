@@ -9,17 +9,47 @@ export default async function GroupsPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MIS GRUPOS
+  // ---------------------------------------------------------
+  // 1. OBTENER SOLO MIS GRUPOS (Corrección de Visibilidad)
+  // ---------------------------------------------------------
+  // Usamos "!inner" en group_members para filtrar. 
+  // Solo trae el grupo si encuentra una fila en group_members con tu email.
   const { data: myGroups } = await supabase
     .from("groups")
-    .select("*")
+    .select("*, group_members!inner(member_email)")
+    .eq("group_members.member_email", user.email)
     .order("created_at", { ascending: false });
 
-  // 2. OBTENER AMIGOS (Para pasarlos al formulario de crear grupo)
-  const { data: friends } = await supabase
+  // ---------------------------------------------------------
+  // 2. OBTENER AMIGOS (Corrección de Lista Vacía)
+  // ---------------------------------------------------------
+  // Usamos la lógica del Sistema Social (tabla friends + profiles)
+  
+  // A. Buscar conexiones aceptadas
+  const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
-    .order("friend_name", { ascending: true });
+    .eq("status", "accepted")
+    .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+  // B. Obtener IDs de los amigos
+  const friendIds = rawFriends?.map(f => 
+      f.requester_id === user.id ? f.receiver_id : f.requester_id
+  ) || [];
+
+  // C. Buscar sus nombres reales en Perfiles
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, email, username")
+    .in("id", friendIds);
+
+  // D. Formatear para el componente
+  const myFriends = profiles?.map(p => ({
+    id: p.id,
+    friend_email: p.email,
+    friend_name: p.username || p.email?.split("@")[0]
+  })) || [];
+
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -36,15 +66,15 @@ export default async function GroupsPage() {
           </Link>
         </div>
 
-        {/* LAYOUT: Grid de 2 columnas en PC, 1 en Móvil */}
+        {/* LAYOUT */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           
-          {/* COLUMNA 1: Formulario de Crear (Con selector de amigos) */}
+          {/* COLUMNA 1: Formulario de Crear (Con lista de amigos arreglada) */}
           <div className="md:col-span-1">
-            <AdvancedCreateGroupForm friends={friends || []} />
+            <AdvancedCreateGroupForm friends={myFriends} />
           </div>
 
-          {/* COLUMNA 2: Lista de Grupos */}
+          {/* COLUMNA 2: Lista de Grupos (Filtrada) */}
           <div className="md:col-span-2 space-y-4">
             <h2 className="font-bold text-gray-700 text-lg">Tus grupos activos</h2>
             
@@ -56,7 +86,7 @@ export default async function GroupsPage() {
             ) : (
               <div className="grid gap-4">
                 {myGroups.map((group) => (
-                  <Link key={group.id} href={`/groups/${group.id}`}>
+                  <Link key={group.id} href={`/dashboard/groups/${group.id}`}>
                     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-xl">
