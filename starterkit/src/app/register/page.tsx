@@ -2,6 +2,7 @@ import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { headers } from "next/headers";
+import Image from "next/image"; // 👈 1. Importamos Image
 
 export default async function RegisterPage(props: {
   searchParams: Promise<{ success?: string; message?: string }>;
@@ -13,7 +14,7 @@ export default async function RegisterPage(props: {
 
   const searchParams = await props.searchParams;
   const message = searchParams?.message;
-  const success = searchParams?.success; // Detectamos si hubo éxito
+  const success = searchParams?.success;
 
   const signUp = async (formData: FormData) => {
     "use server";
@@ -21,7 +22,6 @@ export default async function RegisterPage(props: {
     const password = formData.get("password") as string;
     const username = formData.get("username") as string;
     
-    // Detectar URL actual para el link del email
     const headersList = await headers();
     const host = headersList.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
@@ -46,8 +46,6 @@ export default async function RegisterPage(props: {
       return redirect("/register?message=" + error.message);
     }
 
-    // EN LUGAR DE REDIRIGIR A LOGIN, VOLVEMOS A CARGAR LA PÁGINA CON MENSAJE DE ÉXITO
-    // Esto evita el error 405 de redirección
     return redirect("/register?success=true");
   };
 
@@ -55,7 +53,22 @@ export default async function RegisterPage(props: {
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
       <div className="w-full max-w-md space-y-8 bg-white p-8 md:p-10 shadow-xl rounded-2xl border border-gray-100">
         
-        {/* ESTADO DE ÉXITO: Si se registró bien, mostramos esto y ocultamos el formulario */}
+        {/* 👇 2. LOGO (Se ve siempre, antes de la lógica de éxito/formulario) */}
+        <div className="flex justify-center mb-6">
+          <Link href="/">
+            <div className="relative w-24 h-24 hover:scale-105 transition-transform duration-300">
+               <Image 
+                 src="/logo.png" 
+                 alt="Miti Logo" 
+                 fill 
+                 className="object-contain"
+                 priority
+               />
+            </div>
+          </Link>
+        </div>
+
+        {/* ESTADO DE ÉXITO */}
         {success ? (
           <div className="text-center space-y-4">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
@@ -73,7 +86,7 @@ export default async function RegisterPage(props: {
             </div>
           </div>
         ) : (
-          /* ESTADO NORMAL: Formulario de Registro */
+          /* ESTADO NORMAL: Formulario */
           <>
             <div className="text-center">
               <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">Crear Cuenta</h2>
@@ -98,7 +111,7 @@ export default async function RegisterPage(props: {
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                       <span className="text-gray-500 sm:text-sm">@</span>
                     </div>
-                    <input name="username" type="text" required className="block w-full rounded-lg border-gray-300 bg-gray-50 py-2 pl-7 pr-3 text-gray-900 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="usuario_cool" />
+                    <input name="username" type="text" required className="block w-full rounded-lg border-gray-300 bg-gray-50 py-2 pl-7 pr-3 text-gray-900 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="usuario" />
                   </div>
                 </div>
                 <div>

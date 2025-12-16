@@ -1,6 +1,7 @@
 import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link"; // Importamos Link para navegar
+import Link from "next/link";
+import Image from "next/image"; // 👈 1. Importar Image
 
 export default async function LoginPage(props: {
   searchParams: Promise<{ message?: string }>;
@@ -39,6 +40,23 @@ export default async function LoginPage(props: {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
       <div className="w-full max-w-md space-y-8 bg-white p-8 md:p-10 shadow-xl rounded-2xl border border-gray-100">
+        
+        {/* 👇 2. AQUÍ ESTÁ EL LOGO */}
+        <div className="flex justify-center mb-2">
+          <Link href="/">
+            <div className="relative w-24 h-24 hover:scale-105 transition-transform duration-300">
+               {/* Asegúrate de que tu archivo se llame 'logo.png' en la carpeta /public */}
+               <Image 
+                 src="/logo.png" 
+                 alt="Miti Logo" 
+                 fill 
+                 className="object-contain"
+                 priority
+               />
+            </div>
+          </Link>
+        </div>
+
         <div className="text-center">
           <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">
             Iniciar Sesión
