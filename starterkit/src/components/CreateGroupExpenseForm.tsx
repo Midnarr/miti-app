@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 interface Member {
   id: string;
-  name: string; // Aquí vendrá el email del usuario
+  name: string; // Puede ser username o email
 }
 
 interface PaymentMethod {
@@ -100,11 +100,13 @@ export default function CreateGroupExpenseForm({
           original_amount: totalAmount,
           amount: splitAmount, // Lo que debe cada uno
           payer_id: user.id,   // Yo pagué
-          debtor_email: member.name, // Usamos el email que viene en 'name'
+          debtor_email: member.name, // Usamos el nombre/email como identificador temporal o ID si lo tienes mapeado
+          // NOTA: Idealmente 'debtor_email' debería ser el email real. 
+          // Si 'member.name' no es email, asegúrate de pasar el email en la prop 'members'.
           
           group_id: groupId,
-          status: "pending", // 👈 IMPORTANTE: Evita el error "check constraint"
-          receipt_url: receiptUrl,
+          status: "pending",
+          receipt_url: receiptUrl, // 👈 Aquí va el recibo
 
           // 👇 DATOS DE COBRO
           payment_method_type: paymentType,
@@ -156,7 +158,7 @@ export default function CreateGroupExpenseForm({
           />
         </div>
 
-        {/* INPUT DE ARCHIVO (TICKET) */}
+        {/* 👇 RECUPERADO: INPUT DE ARCHIVO (TICKET) */}
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ticket / Recibo (Opcional)</label>
           <input
@@ -167,7 +169,7 @@ export default function CreateGroupExpenseForm({
           />
         </div>
 
-        {/* SELECTOR DE MÉTODO DE COBRO */}
+        {/* 👇 SELECTOR DE MÉTODO DE COBRO */}
         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">¿Cómo quieres que te devuelvan?</label>
             

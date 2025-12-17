@@ -1,112 +1,204 @@
 import { createClient } from "@/libs/supabase/server";
-import { redirect } from "next/navigation";
-import AddMemberForm from "@/components/AddMemberForm";
+import { notFound, redirect } from "next/navigation";
 import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
-// import GroupExpensesList from "@/components/GroupExpensesList"; 
+import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
+import AddMemberForm from "@/components/AddMemberForm";
+import GroupMemberList from "@/components/GroupMemberList"; 
+import Link from "next/link";
 
-export default async function GroupPage({ params }: { params: { id: string } }) {
+export default async function GroupDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const params = await props.params;
+  const groupId = params.id;
+  
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
 
-  const groupId = params.id;
-
-  // 1. Obtener datos del grupo
-  const { data: group } = await supabase
+  // 1. GRUPO
+  const { data: group, error: groupError } = await supabase
     .from("groups")
     .select("*")
     .eq("id", groupId)
     .single();
 
-  if (!group) return <div className="p-8 text-center text-gray-500">Grupo no encontrado</div>;
+  if (groupError || !group) return notFound();
 
-  // 2. 👇 LÓGICA CORREGIDA PARA TU TABLA
-  // Primero obtenemos los emails de la tabla group_members
-  const { data: memberRows } = await supabase
+  // 2. MIEMBROS (Obtener emails)
+  const { data: membersData } = await supabase
     .from("group_members")
-    .select("member_email") // ✅ Usamos tu columna real
+    .select("member_email") 
     .eq("group_id", groupId);
 
-  const emails = memberRows?.map((row) => row.member_email) || [];
+  const memberEmails = membersData?.map(m => m.member_email) || [];
 
-  // Ahora buscamos los IDs reales de esos usuarios en la tabla 'profiles'
-  // Esto es necesario para que el formulario sepa sus IDs
-  const { data: profiles } = await supabase
+  // 🚨 SEGURIDAD
+  const currentUserEmail = user.email!.toLowerCase().trim();
+  const isMember = memberEmails.some(email => email.toLowerCase().trim() === currentUserEmail);
+  if (!isMember) return notFound();
+
+  // 3. OBTENER PERFILES COMPLETOS DE LOS MIEMBROS (Para tener Username y ID)
+  const { data: memberProfiles } = await supabase
     .from("profiles")
     .select("id, email, username")
-    .in("email", emails);
+    .in("email", memberEmails);
 
-  // Mapeamos a la estructura que necesita el formulario
-  const memberObjects = profiles?.map((p) => ({
-    id: p.id,
-    name: p.email // O p.username si prefieres
-  })) || [];
+  // Formateamos la lista de miembros para el componente visual (GroupMemberList)
+  const fullMembers = memberEmails.map(email => {
+    const profile = memberProfiles?.find(p => p.email === email);
+    return {
+      email: email,
+      username: profile?.username || email.split("@")[0],
+      id: profile?.id || "unknown" // Usamos "unknown" si es un invitado sin cuenta
+    };
+  });
 
-  // 3. Obtener mis amigos (Para el formulario de agregar miembro)
+  // 👇 PREPARAMOS LOS MIEMBROS PARA EL FORMULARIO DE GASTOS
+  // El formulario espera { id, name } donde 'name' es el email para cobrarles
+  const membersForForm = fullMembers.map(m => ({
+    id: m.id,
+    name: m.email
+  }));
+
+  // 4. AMIGOS (Para el form de agregar)
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
     .eq("status", "accepted")
     .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-  const friendIds = rawFriends?.map(f => 
-      f.requester_id === user.id ? f.receiver_id : f.requester_id
-  ) || [];
-
-  const { data: friendProfiles } = await supabase
-    .from("profiles")
-    .select("id, email, username")
-    .in("id", friendIds);
-
-  const myFriends = friendProfiles?.map(p => ({
+  const friendIds = rawFriends?.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id) || [];
+  const { data: profiles } = await supabase.from("profiles").select("id, email, username").in("id", friendIds);
+  
+  const myFriends = profiles?.map(p => ({
     id: p.id,
     friend_email: p.email,
     friend_name: p.username || p.email?.split("@")[0]
   })) || [];
 
-  // 4. Obtener MIS métodos de pago
+  // 5. 👇 NUEVO Y OBLIGATORIO: OBTENER MÉTODOS DE PAGO DEL USUARIO
+  // Esto es necesario para pasárselo a CreateGroupExpenseForm
   const { data: myPaymentMethods } = await supabase
     .from("user_payment_methods")
     .select("*")
     .eq("user_id", user.id);
 
+  // 6. GASTOS
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false });
+
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8 pb-24">
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-gray-900">{group.name}</h1>
-        <p className="text-gray-500 text-sm">Gestiona los gastos de este grupo</p>
+    <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
+      
+      {/* CABECERA */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col lg:flex-row gap-8">
+        
+        {/* Lado Izquierdo: Título y Lista de Miembros */}
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-4">
+             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
+             <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
+          </div>
+          
+          <GroupMemberList 
+            groupId={groupId}
+            members={fullMembers}
+            currentUserId={user.id}
+            creatorId={group.created_by}
+          />
+        </div>
+
+        {/* Lado Derecho: Resumen Total */}
+        <div className="flex flex-col items-end justify-start">
+           <div className="bg-indigo-50 px-6 py-4 rounded-xl text-center">
+              <span className="block text-3xl font-bold text-indigo-700">{expenses?.length || 0}</span>
+              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Gastos Totales</span>
+           </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* COLUMNA IZQUIERDA: Formularios */}
-        <div className="lg:col-span-1 space-y-8">
+        <div className="lg:col-span-1">
           <div className="sticky top-8 space-y-8">
-             
-             {/* Componente para agregar nuevos miembros */}
-             <AddMemberForm 
+            {/* Formulario para invitar miembros */}
+            <AddMemberForm groupId={groupId} friends={myFriends} existingEmails={memberEmails} />
+            
+            {/* 👇 FORMULARIO DE GASTOS CORREGIDO */}
+            <CreateGroupExpenseForm 
                 groupId={groupId} 
-                friends={myFriends} 
-                // 👇 CORRECCIÓN ERROR TYPESCRIPT: Pasamos solo los emails (strings)
-                existingEmails={emails} 
-             />
-
-             {/* Componente para crear gasto */}
-             <CreateGroupExpenseForm 
-                groupId={groupId} 
-                members={memberObjects} 
+                members={membersForForm} 
                 myPaymentMethods={myPaymentMethods || []} 
-             />
+            />
           </div>
         </div>
 
         {/* COLUMNA DERECHA: Lista de Gastos */}
-        <div className="lg:col-span-2">
-            <div className="bg-white p-6 rounded-xl border border-dashed border-gray-300 text-center">
-                <p className="text-gray-400">Aquí irá la lista de gastos del grupo...</p>
-                {/* <GroupExpensesList groupId={groupId} ... /> */}
-            </div>
+        <div className="lg:col-span-2 space-y-4">
+           <h2 className="font-bold text-xl text-gray-800">Historial</h2>
+           {!expenses || expenses.length === 0 ? (
+              <div className="bg-white p-12 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
+                <p className="mb-2 text-4xl">💸</p>
+                <p>No hay gastos registrados aún.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {expenses.map((expense) => {
+                  const expenseDebtor = expense.debtor_email.toLowerCase().trim();
+                  const isMePayer = expense.payer_id === user.id;
+                  const isMeDebtor = expenseDebtor === currentUserEmail;
+
+                  let labelText = isMePayer ? "Le cobraste a:" : (isMeDebtor ? "Te cobraron a:" : "Le cobraron a:");
+                  let valueText = isMePayer ? (isMeDebtor ? "Ti mismo" : expense.debtor_email) : (isMeDebtor ? "Ti" : expense.debtor_email);
+                  
+                  const debtorProfile = memberProfiles?.find(p => p.email === expenseDebtor);
+                  const debtorName = debtorProfile?.username ? `@${debtorProfile.username}` : valueText;
+
+                  let borderColor = "border-gray-100";
+                  if (expense.status === 'proposed') borderColor = "border-indigo-200";
+                  if (expense.status === 'pending') borderColor = "border-orange-200";
+                  if (expense.status === 'paid') borderColor = "border-green-200";
+
+                  return (
+                    <div key={expense.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${borderColor} flex justify-between items-center transition-all hover:shadow-md`}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-900">{expense.description}</p>
+                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors">📎 Ticket</a>}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {labelText} <span className="font-medium text-indigo-600">{debtorName}</span>
+                        </p>
+                        {/* Mostrar si pidió transferencia */}
+                        {expense.payment_method_type === 'transfer' && isMeDebtor && (
+                             <p className="text-[10px] mt-1 text-purple-600 bg-purple-50 px-2 py-0.5 rounded w-fit">
+                               🏦 Pagar a CBU: {expense.payment_details}
+                             </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
+                        {/* Pasamos los detalles de pago a los botones */}
+                        <ExpenseStatusButtons 
+                            expenseId={expense.id} 
+                            currentStatus={expense.status} 
+                            isDebtor={isMeDebtor} 
+                            isPayer={isMePayer}
+                            paymentMethod={expense.payment_method_type}
+                            paymentDetails={expense.payment_details}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
         </div>
       </div>
     </div>
