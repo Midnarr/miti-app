@@ -21,15 +21,18 @@ export default async function GroupPage({ params }: { params: { id: string } }) 
 
   if (!group) return <div className="p-8 text-center text-gray-500">Grupo no encontrado</div>;
 
-  // 2. Obtener miembros del grupo (OBJETOS COMPLETOS)
+  // ... dentro de src/app/groups/[id]/page.tsx
+
+  // 2. Obtener miembros
   const { data: membersRel } = await supabase
     .from("group_members")
-    .select("user_id, profiles(email, username)")
+    // 👇 CAMBIO AQUÍ: Reemplaza "user_id" por "profile_id" (o como se llame en tu tabla)
+    .select("profile_id, profiles(email, username)") 
     .eq("group_id", groupId);
 
-  // Mantenemos esto como OBJETOS porque CreateGroupExpenseForm necesita los IDs
   const memberObjects = membersRel?.map((m: any) => ({
-    id: m.user_id,
+    // 👇 CAMBIO AQUÍ TAMBIÉN: Usa el nombre real de tu columna
+    id: m.profile_id, 
     name: m.profiles?.email || "Usuario"
   })) || [];
 
