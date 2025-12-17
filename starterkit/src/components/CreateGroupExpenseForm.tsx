@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; // 👈 Importamos Image para los avatares
 
 interface Member {
   id: string;
   name: string; 
-  avatar_url?: string | null; // 👈 Agregado para consistencia
+  avatar_url?: string | null;
 }
 
 interface PaymentMethod {
@@ -32,6 +33,27 @@ export default function CreateGroupExpenseForm({
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   
+  // 👇 NUEVO: Estado para saber quiénes participan en el gasto
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+
+  // Al cargar el componente, marcamos a TODOS por defecto
+  useEffect(() => {
+    if (members.length > 0) {
+        setSelectedMemberIds(members.map(m => m.id));
+    }
+  }, [members]);
+
+  // Función para marcar/desmarcar
+  const toggleMember = (memberId: string) => {
+    if (selectedMemberIds.includes(memberId)) {
+        // Si ya está, lo sacamos (desmarcar)
+        setSelectedMemberIds(prev => prev.filter(id => id !== memberId));
+    } else {
+        // Si no está, lo agregamos (marcar)
+        setSelectedMemberIds(prev => [...prev, memberId]);
+    }
+  };
+
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [paymentType, setPaymentType] = useState<"mp_link" | "transfer" | "cash">("mp_link");
   const [selectedAliasId, setSelectedAliasId] = useState("");
@@ -62,6 +84,13 @@ export default function CreateGroupExpenseForm({
         return;
       }
 
+      // Validar que haya al menos alguien seleccionado
+      if (selectedMemberIds.length === 0) {
+        alert("Debes seleccionar al menos a una persona para dividir el gasto.");
+        setLoading(false);
+        return;
+      }
+
       let finalDetails = null;
       if (paymentType === "transfer") {
         if (!selectedAliasId) {
@@ -87,14 +116,20 @@ export default function CreateGroupExpenseForm({
       }
 
       const totalAmount = parseFloat(amount);
-      const splitAmount = totalAmount / members.length; 
+      
+      // 👇 LÓGICA DE DIVISIÓN ACTUALIZADA
+      // Dividimos el monto total SOLO entre la cantidad de gente seleccionada
+      const splitAmount = totalAmount / selectedMemberIds.length; 
 
       const expensesToInsert = members
+        // 1. Filtramos solo los miembros que fueron seleccionados
+        .filter(member => selectedMemberIds.includes(member.id))
+        // 2. Excluimos al pagador (yo no me debo a mí mismo)
         .filter(member => member.id !== user.id) 
         .map(member => ({
           description: description,
           original_amount: totalAmount,
-          amount: splitAmount, 
+          amount: splitAmount, // Cuota ajustada a la cantidad de participantes
           payer_id: user.id,  
           debtor_email: member.name, 
           group_id: groupId,
@@ -113,6 +148,10 @@ export default function CreateGroupExpenseForm({
       setAmount("");
       setReceiptFile(null);
       setPaymentType("mp_link");
+      
+      // Reseteamos la selección a "Todos" para el próximo gasto
+      setSelectedMemberIds(members.map(m => m.id));
+      
       router.refresh();
 
     } catch (error: any) {
@@ -146,6 +185,67 @@ export default function CreateGroupExpenseForm({
             placeholder="0.00"
             className="w-full border p-2 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
           />
+        </div>
+
+        {/* 👇 NUEVO SECTOR: SELECCIÓN DE MIEMBROS */}
+        <div>
+            <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase">Dividir entre:</label>
+                <button 
+                    type="button"
+                    onClick={() => setSelectedMemberIds(members.map(m => m.id))}
+                    className="text-[10px] text-indigo-600 font-bold hover:underline"
+                >
+                    Seleccionar Todos
+                </button>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                {members.map(member => {
+                    const isSelected = selectedMemberIds.includes(member.id);
+                    return (
+                        <div 
+                            key={member.id}
+                            onClick={() => toggleMember(member.id)}
+                            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all select-none ${
+                                isSelected
+                                ? "bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500" 
+                                : "bg-white border-gray-200 hover:bg-gray-50"
+                            }`}
+                        >
+                            {/* Checkbox Visual */}
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                                isSelected ? "bg-indigo-600 border-indigo-600" : "border-gray-300"
+                            }`}>
+                                {isSelected && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                            </div>
+                            
+                            {/* Avatar y Nombre */}
+                            <div className="flex items-center gap-2 overflow-hidden w-full">
+                                <div className="relative w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex-shrink-0 border border-gray-100">
+                                    {member.avatar_url ? (
+                                        <Image src={member.avatar_url} alt={member.name} fill className="object-cover" />
+                                    ) : (
+                                        <span className="flex items-center justify-center w-full h-full text-[10px] font-bold text-gray-500">
+                                            {member.name.charAt(0).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className={`text-xs truncate ${isSelected ? "font-bold text-indigo-900" : "font-medium text-gray-600"}`}>
+                                    {member.name}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            
+            {/* Info de división dinámica */}
+            {amount && selectedMemberIds.length > 0 && (
+                <p className="text-right text-[10px] text-gray-400 mt-1">
+                    ${(parseFloat(amount) / selectedMemberIds.length).toFixed(2)} por persona
+                </p>
+            )}
         </div>
 
         <div>
@@ -208,7 +308,7 @@ export default function CreateGroupExpenseForm({
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors"
+          className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
         >
           {loading ? "Dividiendo..." : "Dividir Gasto"}
         </button>
