@@ -42,7 +42,7 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // 4. OBTENER AMIGOS
+  // 4. OBTENER AMIGOS (¡ACTUALIZADO!) 📸
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
@@ -53,15 +53,17 @@ export default async function DashboardPage() {
       f.requester_id === user.id ? f.receiver_id : f.requester_id
   ) || [];
 
+  // 👇 AQUÍ ESTÁ EL CAMBIO CLAVE: Agregamos 'avatar_url' a la selección
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, email, username")
+    .select("id, email, username, avatar_url") 
     .in("id", friendIds);
 
   const myFriends = profiles?.map(p => ({
     id: p.id,
     friend_email: p.email,
-    friend_name: p.username || p.email?.split("@")[0]
+    friend_name: p.username || p.email?.split("@")[0],
+    avatar_url: p.avatar_url // 👈 Y lo pasamos al objeto
   })) || [];
   
   // --- FILTROS DE ESTADO ---
@@ -86,6 +88,7 @@ export default async function DashboardPage() {
         
         {/* COLUMNA IZQUIERDA: Formulario */}
         <div className="md:col-span-1 space-y-8">
+           {/* El componente CreateExpenseForm ya está listo para recibir la avatar_url dentro de 'friends' */}
            <CreateExpenseForm 
               currentUserEmail={user.email!} 
               friends={myFriends} 

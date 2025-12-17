@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; // 👈 IMPORTANTE: Para mostrar la foto
 
 // Interfaces de datos
 interface Friend {
   id: string;
   friend_email: string;
   friend_name: string;
+  avatar_url?: string | null; // 👈 NUEVO: Agregamos la foto (opcional)
 }
 
 interface PaymentMethod {
@@ -33,7 +35,7 @@ export default function CreateExpenseForm({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [selectedFriendId, setSelectedFriendId] = useState("");
-  const [splitEvenly, setSplitEvenly] = useState(true); // true = 50/50, false = 100% deuda
+  const [splitEvenly, setSplitEvenly] = useState(true); 
   const [loading, setLoading] = useState(false);
 
   // Estados para Ticket y Cobro
@@ -41,13 +43,15 @@ export default function CreateExpenseForm({
   const [paymentType, setPaymentType] = useState<"mp_link" | "transfer" | "cash">("mp_link");
   const [selectedAliasId, setSelectedAliasId] = useState("");
 
+  // 👇 LÓGICA NUEVA: Encontrar al amigo seleccionado para mostrar su foto
+  const selectedFriend = friends.find(f => f.id === selectedFriendId);
+
   // Función para subir la imagen a Supabase Storage
   const handleUploadReceipt = async (file: File) => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random()}.${fileExt}`;
     const filePath = `receipts/${fileName}`;
 
-    // Asegúrate de que el bucket 'receipts' exista en tu Supabase Storage y sea público
     const { error: uploadError } = await supabase.storage
       .from('receipts')
       .upload(filePath, file);
@@ -65,14 +69,12 @@ export default function CreateExpenseForm({
     setLoading(true);
 
     try {
-      // 1. Validaciones básicas
       if (!description || !amount || !selectedFriendId) {
         alert("Por favor completa descripción, monto y selecciona un amigo.");
         setLoading(false);
         return;
       }
 
-      // 2. Validar Transferencia (Debe haber elegido un Alias)
       let finalDetails = null;
       if (paymentType === "transfer") {
         if (!selectedAliasId) {
@@ -80,16 +82,13 @@ export default function CreateExpenseForm({
           setLoading(false);
           return;
         }
-        // Guardamos el texto del alias directamente en el gasto (Snapshot)
         const method = myPaymentMethods.find(m => m.id === selectedAliasId);
         finalDetails = `${method?.platform_name}: ${method?.alias_cbu}`;
       }
 
-      // 3. Obtener usuario actual
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No estás autenticado");
 
-      // 4. Subir Ticket (Si existe)
       let receiptUrl = null;
       if (receiptFile) {
         try {
@@ -100,35 +99,30 @@ export default function CreateExpenseForm({
         }
       }
 
-      // 5. Cálculos Matemáticos
       const totalAmount = parseFloat(amount);
       const debtAmount = splitEvenly ? (totalAmount / 2) : totalAmount;
       const friendData = friends.find(f => f.id === selectedFriendId);
 
-      // 6. INSERTAR EN SUPABASE
       const { error } = await supabase.from("expenses").insert({
         description: description,
         original_amount: totalAmount,
-        amount: debtAmount, // Lo que él me debe
-        payer_id: user.id, // Yo pagué
-        debtor_email: friendData?.friend_email, // Él me debe
-        
-        status: "pending", // Importante: Estado inicial
+        amount: debtAmount, 
+        payer_id: user.id, 
+        debtor_email: friendData?.friend_email, 
+        status: "pending", 
         receipt_url: receiptUrl,
-        group_id: null, // Es un gasto 1 a 1
-
-        // Datos de Cobro
-        payment_method_type: paymentType, // 'cash', 'transfer', 'mp_link'
-        payment_details: finalDetails,    // Ej: "Naranja X: mi.alias"
+        group_id: null, 
+        payment_method_type: paymentType, 
+        payment_details: finalDetails,    
       });
 
       if (error) throw error;
 
-      // 7. Limpiar y refrescar
       setDescription("");
       setAmount("");
       setReceiptFile(null);
       setPaymentType("mp_link");
+      // No reseteamos el amigo seleccionado para que sea más rápido cargar otro gasto
       router.refresh(); 
 
     } catch (error: any) {
@@ -192,6 +186,30 @@ export default function CreateExpenseForm({
           </div>
         </div>
 
+        {/* 👇 NUEVO: PREVISUALIZACIÓN DEL AMIGO SELECCIONADO */}
+        {selectedFriend && (
+            <div className="flex items-center gap-3 bg-indigo-50 p-3 rounded-lg border border-indigo-100 animate-in fade-in duration-300">
+                <div className="relative h-10 w-10 rounded-full overflow-hidden border-2 border-white shadow-sm flex-shrink-0">
+                    {selectedFriend.avatar_url ? (
+                        <Image 
+                            src={selectedFriend.avatar_url} 
+                            alt={selectedFriend.friend_name}
+                            fill
+                            className="object-cover"
+                        />
+                    ) : (
+                        <div className="h-full w-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm">
+                            {selectedFriend.friend_name.charAt(0).toUpperCase()}
+                        </div>
+                    )}
+                </div>
+                <div className="overflow-hidden">
+                    <p className="text-sm font-bold text-gray-800 truncate">{selectedFriend.friend_name}</p>
+                    <p className="text-xs text-gray-500 truncate">{selectedFriend.friend_email}</p>
+                </div>
+            </div>
+        )}
+
         {/* INPUT DE TICKET / FOTO */}
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ticket (Opcional)</label>
@@ -231,7 +249,6 @@ export default function CreateExpenseForm({
                 </button>
             </div>
 
-            {/* Si elige Transferencia, mostrar selector de Alias */}
             {paymentType === "transfer" && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                     {myPaymentMethods.length > 0 ? (
@@ -253,7 +270,6 @@ export default function CreateExpenseForm({
                 </div>
             )}
             
-            {/* Mensajes de ayuda contextual */}
             {paymentType === "mp_link" && <p className="text-[10px] text-gray-500 mt-1">Se generará un link automático (con comisión).</p>}
             {paymentType === "cash" && <p className="text-[10px] text-gray-500 mt-1">Arreglan entre ustedes en persona.</p>}
         </div>

@@ -21,7 +21,6 @@ export default async function ProfilePage() {
       
       {/* Botón Volver */}
       <div className="flex items-center gap-2">
-         <Link href="/dashboard" className="text-gray-400 hover:text-indigo-600 transition-colors">← Volver</Link>
          <h1 className="text-2xl font-bold text-gray-900">Mi Perfil</h1>
       </div>
 

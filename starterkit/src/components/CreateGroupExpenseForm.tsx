@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 
 interface Member {
   id: string;
-  name: string; // Puede ser username o email
+  name: string; 
+  avatar_url?: string | null; // 👈 Agregado para consistencia
 }
 
 interface PaymentMethod {
@@ -31,12 +32,10 @@ export default function CreateGroupExpenseForm({
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // 👇 ESTADOS PARA TICKET Y MÉTODO DE COBRO
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [paymentType, setPaymentType] = useState<"mp_link" | "transfer" | "cash">("mp_link");
   const [selectedAliasId, setSelectedAliasId] = useState("");
 
-  // Función de subida de imagen (reutilizable)
   const handleUploadReceipt = async (file: File) => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random()}.${fileExt}`;
@@ -63,7 +62,6 @@ export default function CreateGroupExpenseForm({
         return;
       }
 
-      // Validar Transferencia
       let finalDetails = null;
       if (paymentType === "transfer") {
         if (!selectedAliasId) {
@@ -78,7 +76,6 @@ export default function CreateGroupExpenseForm({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No autenticado");
 
-      // 1. Subir Ticket si existe
       let receiptUrl = null;
       if (receiptFile) {
         try {
@@ -90,30 +87,23 @@ export default function CreateGroupExpenseForm({
       }
 
       const totalAmount = parseFloat(amount);
-      const splitAmount = totalAmount / members.length; // División simple entre todos
+      const splitAmount = totalAmount / members.length; 
 
-      // 2. Crear los gastos para cada miembro (menos para mí mismo)
       const expensesToInsert = members
-        .filter(member => member.id !== user.id) // No me cobro a mí mismo
+        .filter(member => member.id !== user.id) 
         .map(member => ({
           description: description,
           original_amount: totalAmount,
-          amount: splitAmount, // Lo que debe cada uno
-          payer_id: user.id,   // Yo pagué
-          debtor_email: member.name, // Usamos el nombre/email como identificador temporal o ID si lo tienes mapeado
-          // NOTA: Idealmente 'debtor_email' debería ser el email real. 
-          // Si 'member.name' no es email, asegúrate de pasar el email en la prop 'members'.
-          
+          amount: splitAmount, 
+          payer_id: user.id,  
+          debtor_email: member.name, 
           group_id: groupId,
           status: "pending",
-          receipt_url: receiptUrl, // 👈 Aquí va el recibo
-
-          // 👇 DATOS DE COBRO
+          receipt_url: receiptUrl, 
           payment_method_type: paymentType,
           payment_details: finalDetails
         }));
       
-      // Si el array está vacío (soy el único en el grupo), no hacemos nada
       if (expensesToInsert.length > 0) {
         const { error } = await supabase.from("expenses").insert(expensesToInsert);
         if (error) throw error;
@@ -158,7 +148,6 @@ export default function CreateGroupExpenseForm({
           />
         </div>
 
-        {/* 👇 RECUPERADO: INPUT DE ARCHIVO (TICKET) */}
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ticket / Recibo (Opcional)</label>
           <input
@@ -169,7 +158,6 @@ export default function CreateGroupExpenseForm({
           />
         </div>
 
-        {/* 👇 SELECTOR DE MÉTODO DE COBRO */}
         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">¿Cómo quieres que te devuelvan?</label>
             
