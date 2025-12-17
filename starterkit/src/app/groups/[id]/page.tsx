@@ -4,6 +4,7 @@ import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 import AddMemberForm from "@/components/AddMemberForm";
 import GroupMemberList from "@/components/GroupMemberList"; 
+import DeleteGroupButton from "@/components/DeleteGroupButton"; // 👈 1. IMPORTAR
 import Link from "next/link";
 
 export default async function GroupDetailPage(props: {
@@ -39,30 +40,30 @@ export default async function GroupDetailPage(props: {
   const isMember = memberEmails.some(email => email.toLowerCase().trim() === currentUserEmail);
   if (!isMember) return notFound();
 
-  // 3. OBTENER PERFILES COMPLETOS DE LOS MIEMBROS (Para tener Username y ID)
+  // 👮‍♂️ VERIFICAR SI ES DUEÑO DEL GRUPO
+  const isOwner = group.created_by === user.id;
+
+  // 3. OBTENER PERFILES COMPLETOS
   const { data: memberProfiles } = await supabase
     .from("profiles")
     .select("id, email, username")
     .in("email", memberEmails);
 
-  // Formateamos la lista de miembros para el componente visual (GroupMemberList)
   const fullMembers = memberEmails.map(email => {
     const profile = memberProfiles?.find(p => p.email === email);
     return {
       email: email,
       username: profile?.username || email.split("@")[0],
-      id: profile?.id || "unknown" // Usamos "unknown" si es un invitado sin cuenta
+      id: profile?.id || "unknown" 
     };
   });
 
-  // 👇 PREPARAMOS LOS MIEMBROS PARA EL FORMULARIO DE GASTOS
-  // El formulario espera { id, name } donde 'name' es el email para cobrarles
   const membersForForm = fullMembers.map(m => ({
     id: m.id,
     name: m.email
   }));
 
-  // 4. AMIGOS (Para el form de agregar)
+  // 4. AMIGOS
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
@@ -78,8 +79,7 @@ export default async function GroupDetailPage(props: {
     friend_name: p.username || p.email?.split("@")[0]
   })) || [];
 
-  // 5. 👇 NUEVO Y OBLIGATORIO: OBTENER MÉTODOS DE PAGO DEL USUARIO
-  // Esto es necesario para pasárselo a CreateGroupExpenseForm
+  // 5. MÉTODOS DE PAGO
   const { data: myPaymentMethods } = await supabase
     .from("user_payment_methods")
     .select("*")
@@ -100,9 +100,16 @@ export default async function GroupDetailPage(props: {
         
         {/* Lado Izquierdo: Título y Lista de Miembros */}
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-4">
-             <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
-             <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
+          <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
+                <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
+              </div>
+
+              {/* 👇 2. BOTÓN DE BORRAR (SOLO SI ES DUEÑO) */}
+              {isOwner && (
+                <DeleteGroupButton groupId={groupId} />
+              )}
           </div>
           
           <GroupMemberList 
@@ -127,10 +134,7 @@ export default async function GroupDetailPage(props: {
         {/* COLUMNA IZQUIERDA: Formularios */}
         <div className="lg:col-span-1">
           <div className="sticky top-8 space-y-8">
-            {/* Formulario para invitar miembros */}
             <AddMemberForm groupId={groupId} friends={myFriends} existingEmails={memberEmails} />
-            
-            {/* 👇 FORMULARIO DE GASTOS CORREGIDO */}
             <CreateGroupExpenseForm 
                 groupId={groupId} 
                 members={membersForForm} 
@@ -175,7 +179,6 @@ export default async function GroupDetailPage(props: {
                         <p className="text-sm text-gray-500 mt-1">
                           {labelText} <span className="font-medium text-indigo-600">{debtorName}</span>
                         </p>
-                        {/* Mostrar si pidió transferencia */}
                         {expense.payment_method_type === 'transfer' && isMeDebtor && (
                              <p className="text-[10px] mt-1 text-purple-600 bg-purple-50 px-2 py-0.5 rounded w-fit">
                                🏦 Pagar a CBU: {expense.payment_details}
@@ -184,7 +187,6 @@ export default async function GroupDetailPage(props: {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
-                        {/* Pasamos los detalles de pago a los botones */}
                         <ExpenseStatusButtons 
                             expenseId={expense.id} 
                             currentStatus={expense.status} 
