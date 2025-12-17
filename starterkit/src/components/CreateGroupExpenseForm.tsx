@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/libs/supabase/client";
 import { useRouter } from "next/navigation";
-import Image from "next/image"; // 👈 Importamos Image para los avatares
+import Image from "next/image";
 
+// 👇 ACTUALIZADO: Separamos email de username
 interface Member {
   id: string;
-  name: string; 
+  email: string;          // Para la base de datos (identificador)
+  username?: string | null; // Para mostrar en pantalla
   avatar_url?: string | null;
 }
 
@@ -33,23 +35,29 @@ export default function CreateGroupExpenseForm({
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // 👇 NUEVO: Estado para saber quiénes participan en el gasto
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // Al cargar el componente, marcamos a TODOS por defecto
+  useEffect(() => {
+    const getUser = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setCurrentUserId(user.id);
+        }
+    };
+    getUser();
+  }, []);
+
   useEffect(() => {
     if (members.length > 0) {
         setSelectedMemberIds(members.map(m => m.id));
     }
   }, [members]);
 
-  // Función para marcar/desmarcar
   const toggleMember = (memberId: string) => {
     if (selectedMemberIds.includes(memberId)) {
-        // Si ya está, lo sacamos (desmarcar)
         setSelectedMemberIds(prev => prev.filter(id => id !== memberId));
     } else {
-        // Si no está, lo agregamos (marcar)
         setSelectedMemberIds(prev => [...prev, memberId]);
     }
   };
@@ -84,9 +92,8 @@ export default function CreateGroupExpenseForm({
         return;
       }
 
-      // Validar que haya al menos alguien seleccionado
       if (selectedMemberIds.length === 0) {
-        alert("Debes seleccionar al menos a una persona para dividir el gasto.");
+        alert("Selecciona al menos a una persona.");
         setLoading(false);
         return;
       }
@@ -94,7 +101,7 @@ export default function CreateGroupExpenseForm({
       let finalDetails = null;
       if (paymentType === "transfer") {
         if (!selectedAliasId) {
-          alert("Selecciona a qué Alias/CBU quieres que te paguen.");
+          alert("Selecciona tu Alias/CBU.");
           setLoading(false);
           return;
         }
@@ -111,27 +118,22 @@ export default function CreateGroupExpenseForm({
           receiptUrl = await handleUploadReceipt(receiptFile);
         } catch (error) {
           console.error("Error subiendo imagen:", error);
-          alert("Error subiendo el ticket, pero se creará el gasto.");
         }
       }
 
       const totalAmount = parseFloat(amount);
-      
-      // 👇 LÓGICA DE DIVISIÓN ACTUALIZADA
-      // Dividimos el monto total SOLO entre la cantidad de gente seleccionada
       const splitAmount = totalAmount / selectedMemberIds.length; 
 
       const expensesToInsert = members
-        // 1. Filtramos solo los miembros que fueron seleccionados
         .filter(member => selectedMemberIds.includes(member.id))
-        // 2. Excluimos al pagador (yo no me debo a mí mismo)
-        .filter(member => member.id !== user.id) 
+        .filter(member => member.id !== user.id) // Excluimos al pagador
         .map(member => ({
           description: description,
           original_amount: totalAmount,
-          amount: splitAmount, // Cuota ajustada a la cantidad de participantes
+          amount: splitAmount, 
           payer_id: user.id,  
-          debtor_email: member.name, 
+          // 👇 IMPORTANTE: Usamos el email para la lógica interna
+          debtor_email: member.email, 
           group_id: groupId,
           status: "pending",
           receipt_url: receiptUrl, 
@@ -148,10 +150,7 @@ export default function CreateGroupExpenseForm({
       setAmount("");
       setReceiptFile(null);
       setPaymentType("mp_link");
-      
-      // Reseteamos la selección a "Todos" para el próximo gasto
       setSelectedMemberIds(members.map(m => m.id));
-      
       router.refresh();
 
     } catch (error: any) {
@@ -161,11 +160,18 @@ export default function CreateGroupExpenseForm({
     }
   };
 
+  // Helper para mostrar el nombre correcto
+  const getDisplayName = (member: Member) => {
+     if (member.username) return `@${member.username}`;
+     return member.email.split("@")[0]; // Fallback si no tiene username
+  };
+
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
       <h2 className="text-lg font-bold text-gray-800 mb-4">✨ Nuevo Gasto Grupal</h2>
       
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Inputs Básicos */}
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
           <input
@@ -187,7 +193,7 @@ export default function CreateGroupExpenseForm({
           />
         </div>
 
-        {/* 👇 NUEVO SECTOR: SELECCIÓN DE MIEMBROS */}
+        {/* 👇 SELECCIÓN DE MIEMBROS */}
         <div>
             <div className="flex justify-between items-center mb-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase">Dividir entre:</label>
@@ -203,6 +209,9 @@ export default function CreateGroupExpenseForm({
             <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                 {members.map(member => {
                     const isSelected = selectedMemberIds.includes(member.id);
+                    const isMe = member.id === currentUserId;
+                    const displayName = getDisplayName(member);
+
                     return (
                         <div 
                             key={member.id}
@@ -213,7 +222,7 @@ export default function CreateGroupExpenseForm({
                                 : "bg-white border-gray-200 hover:bg-gray-50"
                             }`}
                         >
-                            {/* Checkbox Visual */}
+                            {/* Checkbox */}
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
                                 isSelected ? "bg-indigo-600 border-indigo-600" : "border-gray-300"
                             }`}>
@@ -224,15 +233,17 @@ export default function CreateGroupExpenseForm({
                             <div className="flex items-center gap-2 overflow-hidden w-full">
                                 <div className="relative w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex-shrink-0 border border-gray-100">
                                     {member.avatar_url ? (
-                                        <Image src={member.avatar_url} alt={member.name} fill className="object-cover" />
+                                        <Image src={member.avatar_url} alt={displayName} fill className="object-cover" />
                                     ) : (
                                         <span className="flex items-center justify-center w-full h-full text-[10px] font-bold text-gray-500">
-                                            {member.name.charAt(0).toUpperCase()}
+                                            {isMe ? 'T' : displayName.charAt(1).toUpperCase()}
                                         </span>
                                     )}
                                 </div>
+                                
+                                {/* 👇 AQUÍ MOSTRAMOS EL USERNAME O "Tú" */}
                                 <span className={`text-xs truncate ${isSelected ? "font-bold text-indigo-900" : "font-medium text-gray-600"}`}>
-                                    {member.name}
+                                    {isMe ? "Tú" : displayName}
                                 </span>
                             </div>
                         </div>
@@ -240,7 +251,6 @@ export default function CreateGroupExpenseForm({
                 })}
             </div>
             
-            {/* Info de división dinámica */}
             {amount && selectedMemberIds.length > 0 && (
                 <p className="text-right text-[10px] text-gray-400 mt-1">
                     ${(parseFloat(amount) / selectedMemberIds.length).toFixed(2)} por persona
@@ -248,8 +258,9 @@ export default function CreateGroupExpenseForm({
             )}
         </div>
 
+        {/* Resto del formulario... */}
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ticket / Recibo (Opcional)</label>
+          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Ticket (Opcional)</label>
           <input
             type="file"
             accept="image/*"
@@ -260,47 +271,19 @@ export default function CreateGroupExpenseForm({
 
         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">¿Cómo quieres que te devuelvan?</label>
-            
             <div className="grid grid-cols-3 gap-2 mb-3">
-                <button
-                    type="button"
-                    onClick={() => setPaymentType("mp_link")}
-                    className={`text-xs py-2 px-1 rounded border ${paymentType === "mp_link" ? "bg-blue-100 border-blue-500 text-blue-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}
-                >
-                    📲 Mercado Pago
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setPaymentType("transfer")}
-                    className={`text-xs py-2 px-1 rounded border ${paymentType === "transfer" ? "bg-purple-100 border-purple-500 text-purple-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}
-                >
-                    🏦 Transferencia
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setPaymentType("cash")}
-                    className={`text-xs py-2 px-1 rounded border ${paymentType === "cash" ? "bg-green-100 border-green-500 text-green-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}
-                >
-                    💵 Efectivo
-                </button>
+                <button type="button" onClick={() => setPaymentType("mp_link")} className={`text-xs py-2 px-1 rounded border ${paymentType === "mp_link" ? "bg-blue-100 border-blue-500 text-blue-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}>📲 Mercado Pago</button>
+                <button type="button" onClick={() => setPaymentType("transfer")} className={`text-xs py-2 px-1 rounded border ${paymentType === "transfer" ? "bg-purple-100 border-purple-500 text-purple-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}>🏦 Transferencia</button>
+                <button type="button" onClick={() => setPaymentType("cash")} className={`text-xs py-2 px-1 rounded border ${paymentType === "cash" ? "bg-green-100 border-green-500 text-green-700 font-bold" : "bg-white border-gray-200 text-gray-600"}`}>💵 Efectivo</button>
             </div>
-
             {paymentType === "transfer" && (
                 <div className="animate-in fade-in slide-in-from-top-1 duration-300">
                     {myPaymentMethods.length > 0 ? (
-                        <select
-                            value={selectedAliasId}
-                            onChange={(e) => setSelectedAliasId(e.target.value)}
-                            className="w-full text-sm border border-purple-300 bg-purple-50 rounded px-2 py-2 outline-none focus:ring-1 focus:ring-purple-500"
-                        >
+                        <select value={selectedAliasId} onChange={(e) => setSelectedAliasId(e.target.value)} className="w-full text-sm border border-purple-300 bg-purple-50 rounded px-2 py-2 outline-none focus:ring-1 focus:ring-purple-500">
                             <option value="">-- Elige tu Alias --</option>
-                            {myPaymentMethods.map(m => (
-                                <option key={m.id} value={m.id}>{m.platform_name} ({m.alias_cbu})</option>
-                            ))}
+                            {myPaymentMethods.map(m => (<option key={m.id} value={m.id}>{m.platform_name} ({m.alias_cbu})</option>))}
                         </select>
-                    ) : (
-                        <p className="text-xs text-red-500">No tienes alias guardados en Configuración.</p>
-                    )}
+                    ) : (<p className="text-xs text-red-500">No tienes alias guardados.</p>)}
                 </div>
             )}
         </div>

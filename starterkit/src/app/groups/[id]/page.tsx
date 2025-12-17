@@ -4,7 +4,7 @@ import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 import AddMemberForm from "@/components/AddMemberForm";
 import GroupMemberList from "@/components/GroupMemberList"; 
-import DeleteGroupButton from "@/components/DeleteGroupButton"; // 👈 1. IMPORTAR
+import DeleteGroupButton from "@/components/DeleteGroupButton"; 
 import Link from "next/link";
 
 export default async function GroupDetailPage(props: {
@@ -27,7 +27,7 @@ export default async function GroupDetailPage(props: {
 
   if (groupError || !group) return notFound();
 
-  // 2. MIEMBROS (Obtener emails)
+  // 2. MIEMBROS (Obtener emails de la tabla intermedia)
   const { data: membersData } = await supabase
     .from("group_members")
     .select("member_email") 
@@ -43,24 +43,30 @@ export default async function GroupDetailPage(props: {
   // 👮‍♂️ VERIFICAR SI ES DUEÑO DEL GRUPO
   const isOwner = group.created_by === user.id;
 
-  // 3. OBTENER PERFILES COMPLETOS
+  // 3. OBTENER PERFILES COMPLETOS (¡ACTUALIZADO!) 📸
+  // Ahora pedimos también 'avatar_url'
   const { data: memberProfiles } = await supabase
     .from("profiles")
-    .select("id, email, username")
+    .select("id, email, username, avatar_url") 
     .in("email", memberEmails);
 
   const fullMembers = memberEmails.map(email => {
     const profile = memberProfiles?.find(p => p.email === email);
     return {
+      id: profile?.id || "unknown",
       email: email,
-      username: profile?.username || email.split("@")[0],
-      id: profile?.id || "unknown" 
+      username: profile?.username || null, // Pasamos null si no hay username
+      avatar_url: profile?.avatar_url || null // Pasamos la foto
     };
   });
 
+  // 👇 ESTO ES LO QUE CAMBIÓ PARA EL FORMULARIO
+  // El formulario ahora espera { id, email, username, avatar_url }
   const membersForForm = fullMembers.map(m => ({
     id: m.id,
-    name: m.email
+    email: m.email,       // Requerido para la lógica interna
+    username: m.username, // Para mostrar "Juan" en vez del email
+    avatar_url: m.avatar_url // Para mostrar la foto
   }));
 
   // 4. AMIGOS
@@ -106,7 +112,7 @@ export default async function GroupDetailPage(props: {
                 <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
               </div>
 
-              {/* 👇 2. BOTÓN DE BORRAR (SOLO SI ES DUEÑO) */}
+              {/* BOTÓN DE BORRAR (SOLO SI ES DUEÑO) */}
               {isOwner && (
                 <DeleteGroupButton groupId={groupId} />
               )}
@@ -114,7 +120,7 @@ export default async function GroupDetailPage(props: {
           
           <GroupMemberList 
             groupId={groupId}
-            members={fullMembers}
+            members={fullMembers} // fullMembers ya incluye avatar_url ahora
             currentUserId={user.id}
             creatorId={group.created_by}
           />
@@ -135,6 +141,8 @@ export default async function GroupDetailPage(props: {
         <div className="lg:col-span-1">
           <div className="sticky top-8 space-y-8">
             <AddMemberForm groupId={groupId} friends={myFriends} existingEmails={memberEmails} />
+            
+            {/* 👇 AQUÍ USAMOS LOS DATOS NUEVOS */}
             <CreateGroupExpenseForm 
                 groupId={groupId} 
                 members={membersForForm} 
@@ -161,6 +169,7 @@ export default async function GroupDetailPage(props: {
                   let labelText = isMePayer ? "Le cobraste a:" : (isMeDebtor ? "Te cobraron a:" : "Le cobraron a:");
                   let valueText = isMePayer ? (isMeDebtor ? "Ti mismo" : expense.debtor_email) : (isMeDebtor ? "Ti" : expense.debtor_email);
                   
+                  // Intentamos buscar el username del deudor para mostrarlo en el historial también
                   const debtorProfile = memberProfiles?.find(p => p.email === expenseDebtor);
                   const debtorName = debtorProfile?.username ? `@${debtorProfile.username}` : valueText;
 
