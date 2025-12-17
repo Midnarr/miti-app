@@ -5,9 +5,15 @@ export default async function Navbar() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Si no hay usuario, no mostramos el Navbar (o mostramos uno público)
-  // Para este caso, si no hay usuario retornamos null para que la pantalla de login esté limpia
+  // Si no hay usuario, no mostramos el Navbar
   if (!user) return null;
 
-  return <NavbarClient user={user} />;
+  // 👇 NUEVO: Consultamos el avatar
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("avatar_url")
+    .eq("id", user.id)
+    .single();
+
+  return <NavbarClient user={user} avatarUrl={profile?.avatar_url} />;
 }

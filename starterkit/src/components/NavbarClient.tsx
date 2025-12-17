@@ -1,38 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation"; // Para saber en qué página estamos
-import { createClient } from "@/libs/supabase/client";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import Image from "next/image"; // 👈 Importar Image de Next.js
 
-export default function NavbarClient({ user }: { user: any }) {
-  const router = useRouter();
-  const supabase = createClient();
+export default function NavbarClient({ user, avatarUrl }: { user: any, avatarUrl?: string | null }) {
   const pathname = usePathname();
-  
   const userInitial = user.email?.charAt(0).toUpperCase() || "U";
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login"); 
-    router.refresh();
-  };
-
-  // Función para saber si el link está activo (para pintarlo de azul)
+  // Función para saber si el link está activo
   const isActive = (path: string) => pathname === path;
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 h-16 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 h-16 shadow-sm select-none">
       <div className="max-w-7xl mx-auto px-4 h-full relative flex items-center justify-between">
         
-        {/* 1. IZQUIERDA: Logo Moderno y Limpio (Sans-Serif) */}
+        {/* 1. IZQUIERDA: Logo Moderno */}
         <div className="flex-shrink-0 w-10">
-          <Link href="/" className="text-2xl font-black tracking-tighter text-indigo-600 hover:opacity-80 transition-opacity">
+          <Link href="/dashboard" className="text-2xl font-black tracking-tighter text-indigo-600 hover:opacity-80 transition-opacity">
             Miti.
           </Link>
         </div>
 
-        {/* 2. CENTRO: Menú de Navegación (Dashboard, Grupos, Amigos, Config) */}
+        {/* 2. CENTRO: Menú Flotante */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="flex items-center gap-1 md:gap-6 bg-gray-50/80 backdrop-blur-md px-2 py-1.5 rounded-full border border-gray-100 shadow-sm">
             
@@ -69,7 +59,7 @@ export default function NavbarClient({ user }: { user: any }) {
               </svg>
             </Link>
 
-            {/* ITEM: Configuración (Ahora aquí en el centro) */}
+            {/* ITEM: Configuración */}
             <Link 
               href="/settings"
               className={`p-2 rounded-full transition-all ${isActive('/settings') ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
@@ -83,15 +73,27 @@ export default function NavbarClient({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* 3. DERECHA: Avatar del Usuario (Distinto y Separado) */}
+        {/* 3. DERECHA: Avatar del Usuario (LINK A PERFIL) */}
         <div className="flex-shrink-0 flex items-center gap-3">
-          <button 
-            onClick={handleLogout}
-            className="h-9 w-9 bg-gray-900 rounded-full flex items-center justify-center text-white text-sm font-bold hover:bg-gray-700 transition-colors shadow-sm ring-2 ring-white"
-            title={`Usuario: ${user.email} (Clic para salir)`}
+          <Link 
+            href="/profile" 
+            className="relative h-10 w-10 rounded-full overflow-hidden border-2 border-white shadow-sm hover:opacity-80 transition-opacity ring-2 ring-gray-100 group"
+            title="Mi Perfil"
           >
-            {userInitial}
-          </button>
+            {avatarUrl ? (
+               <Image 
+                 src={avatarUrl} 
+                 alt="Avatar" 
+                 fill 
+                 className="object-cover" 
+                 priority
+               />
+            ) : (
+               <div className="h-full w-full bg-gray-900 flex items-center justify-center text-white text-sm font-bold group-hover:bg-indigo-600 transition-colors">
+                 {userInitial}
+               </div>
+            )}
+          </Link>
         </div>
 
       </div>

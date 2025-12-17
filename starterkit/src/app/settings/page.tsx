@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import ConnectMercadoPago from "@/components/ConnectMercadoPago";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 import PaymentMethodsSettings from "@/components/PaymentMethodsSettings";
+import LogoutButton from "@/components/LogoutButton"; // 👈 IMPORTANTE
 
 export default async function SettingsPage({
   searchParams,
@@ -33,7 +34,7 @@ export default async function SettingsPage({
   const error = searchParams?.error;
 
   return (
-    <div className="max-w-2xl mx-auto p-8 pb-20">
+    <div className="max-w-2xl mx-auto p-8 pb-32">
       <h1 className="text-3xl font-bold mb-8">Configuración</h1>
 
       {/* Mensajes de Feedback Globales */}
@@ -65,6 +66,14 @@ export default async function SettingsPage({
         <section>
             <h2 className="text-xl font-bold text-gray-800 mb-4">Seguridad</h2>
             <ChangePasswordForm userEmail={user.email!} />
+        </section>
+
+        <hr className="border-gray-200" />
+
+        {/* SECCIÓN 4: CERRAR SESIÓN (Zona de Peligro) */}
+        <section className="pt-2">
+           <h3 className="text-xs font-bold text-red-500 mb-4 uppercase tracking-widest">Zona de Peligro</h3>
+           <LogoutButton />
         </section>
 
       </div>
