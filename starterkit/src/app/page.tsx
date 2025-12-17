@@ -4,22 +4,19 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-indigo-100 selection:text-indigo-700 overflow-x-hidden">
       
-      {/* --- NAVBAR --- */}
-      <nav className="max-w-7xl mx-auto flex justify-between items-center p-6">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
-            Miti
-          </span>
-        </div>
-        <div className="flex gap-4">
+      {/* --- NAVBAR (Solo botones, sin logo para no duplicar) --- */}
+      <nav className="max-w-7xl mx-auto flex justify-end items-center p-6">
+        <div className="flex gap-4 items-center">
+          {/* Botón Iniciar Sesión: Ahora visible en móvil */}
           <Link 
             href="/login" 
-            className="hidden sm:block text-sm font-semibold text-gray-600 hover:text-indigo-600 transition-colors"
+            className="text-sm font-semibold text-gray-600 hover:text-indigo-600 transition-colors"
           >
             Iniciar Sesión
           </Link>
+          
           <Link 
-            href="/login" // Normalmente Auth UI maneja ambos, o cambia a /register si tienes ruta aparte
+            href="/login" // O /register
             className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition-transform active:scale-95"
           >
             Registrarse
@@ -28,10 +25,17 @@ export default function LandingPage() {
       </nav>
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-20 pb-32 px-4 text-center max-w-5xl mx-auto">
+      <section className="relative pt-10 pb-32 px-4 text-center max-w-5xl mx-auto">
         
         {/* Decoración de fondo (Glow) */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 -z-10 w-[600px] h-[600px] bg-indigo-50 rounded-full blur-3xl opacity-50 pointer-events-none" />
+
+        {/* LOGO CENTRAL (Movido aquí) */}
+        <div className="mb-8 animate-in fade-in zoom-in duration-700">
+           <span className="text-6xl md:text-8xl font-black tracking-tighter text-indigo-600">
+             Miti.
+           </span>
+        </div>
 
         <span className="inline-block py-1 px-3 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold mb-6 border border-indigo-100">
           🚀 La nueva forma de dividir gastos
