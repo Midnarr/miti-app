@@ -21,9 +21,8 @@ export default async function GroupsPage() {
     .order("created_at", { ascending: false });
 
   // ---------------------------------------------------------
-  // 2. OBTENER AMIGOS (Corrección de Lista Vacía)
+  // 2. OBTENER AMIGOS (Para el formulario de crear grupo)
   // ---------------------------------------------------------
-  // Usamos la lógica del Sistema Social (tabla friends + profiles)
   
   // A. Buscar conexiones aceptadas
   const { data: rawFriends } = await supabase
@@ -50,7 +49,6 @@ export default async function GroupsPage() {
     friend_name: p.username || p.email?.split("@")[0]
   })) || [];
 
-
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
@@ -71,6 +69,7 @@ export default async function GroupsPage() {
           
           {/* COLUMNA 1: Formulario de Crear (Con lista de amigos arreglada) */}
           <div className="md:col-span-1">
+             {/* Asegúrate de que este componente exista y reciba 'friends' */}
             <AdvancedCreateGroupForm friends={myFriends} />
           </div>
 
@@ -86,6 +85,7 @@ export default async function GroupsPage() {
             ) : (
               <div className="grid gap-4">
                 {myGroups.map((group) => (
+                  // 👇 ESTA LÍNEA ES LA SOLUCIÓN AL ERROR "UNDEFINED"
                   <Link key={group.id} href={`/groups/${group.id}`}>
                     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                       <div className="flex items-center gap-3">
