@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import CreateExpenseForm from "@/components/CreateExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
 import DeleteExpenseButton from "@/components/DeleteExpenseButton";
+import RealtimeReloader from "@/components/RealtimeReloader";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -10,7 +11,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL (Para mostrar mi nombre en el saludo)
+  // 1. OBTENER MI PERFIL
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
@@ -19,15 +20,13 @@ export default async function DashboardPage() {
 
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
-  // 2. OBTENER MIS MÉTODOS DE PAGO GUARDADOS
-  // (Esto es necesario para pasárselo al formulario y que puedas elegir tu CBU al crear un gasto)
+  // 2. OBTENER MIS MÉTODOS DE PAGO
   const { data: myPaymentMethods } = await supabase
     .from("user_payment_methods")
     .select("*")
     .eq("user_id", user.id);
 
   // 3. OBTENER GASTOS
-  // Usamos la relación !payer_id para traer datos del creador del gasto
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select(`
@@ -75,6 +74,9 @@ export default async function DashboardPage() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
       
+      {/* 👇 2. AQUÍ ACTIVAMOS LA ESCUCHA EN TIEMPO REAL */}
+      <RealtimeReloader userId={user.id} />
+
       {/* HEADER */}
       <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
         Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
@@ -120,7 +122,7 @@ export default async function DashboardPage() {
                           {/* Ticket */}
                           {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
 
-                          {/* INFORMACIÓN EXTRA DE PAGO (Si es transferencia) */}
+                          {/* INFORMACIÓN EXTRA DE PAGO */}
                           {expense.payment_method_type === 'transfer' && expense.payment_details && (
                              <div className="mt-1 p-2 bg-purple-50 rounded border border-purple-100 text-[11px] text-purple-800">
                                <p className="font-bold mb-0.5">Datos para transferir:</p>
@@ -161,52 +163,51 @@ export default async function DashboardPage() {
 
           {/* --- BLOQUE 2: TE DEBEN A TI --- */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-             <h2 className="font-bold text-xl text-gray-800 mb-6">💰 Te deben a ti</h2>
-             {owedToMe.length === 0 ? <p className="text-gray-500 text-sm">Nadie te debe dinero.</p> : (
-              <div className="space-y-4">
-                {owedToMe.map((expense) => (
-                  <div key={expense.id} className="p-4 rounded-lg border border-gray-100 hover:shadow-md transition-shadow bg-gray-50/50">
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
-                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
-                          
-                          {/* Recordatorio de cómo pediste cobrar */}
-                          {expense.payment_method_type === 'transfer' && (
-                             <span className="text-[10px] text-gray-400">Pediste transferencia a: {expense.payment_details}</span>
-                          )}
-                          {expense.payment_method_type === 'cash' && (
-                             <span className="text-[10px] text-gray-400">Cobro en Efectivo</span>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-3">A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span></p>
-                    <div className="flex justify-between items-end border-t border-gray-200 pt-2">
-                      <div className="text-sm text-gray-600">
-                        <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
-                      </div>
-                      
-                      {/* BOTONES DE ACCIÓN + BORRAR */}
-                      <div className="flex items-center gap-1">
-                        <ExpenseStatusButtons 
-                          expenseId={expense.id} 
-                          currentStatus={expense.status} 
-                          isDebtor={false} 
-                          isPayer={true}
-                          paymentMethod={expense.payment_method_type}
-                          paymentDetails={expense.payment_details}
-                        />
-                        
-                        {/* 👇 AQUÍ AÑADIMOS EL BOTÓN DE BORRAR */}
-                        <DeleteExpenseButton expenseId={expense.id} />
-                      </div>
+              <h2 className="font-bold text-xl text-gray-800 mb-6">💰 Te deben a ti</h2>
+              {owedToMe.length === 0 ? <p className="text-gray-500 text-sm">Nadie te debe dinero.</p> : (
+               <div className="space-y-4">
+                 {owedToMe.map((expense) => (
+                   <div key={expense.id} className="p-4 rounded-lg border border-gray-100 hover:shadow-md transition-shadow bg-gray-50/50">
+                     <div className="flex justify-between items-start mb-2">
+                         <div className="flex flex-col gap-1">
+                           <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
+                           {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
+                           
+                           {/* Recordatorio de cómo pediste cobrar */}
+                           {expense.payment_method_type === 'transfer' && (
+                              <span className="text-[10px] text-gray-400">Pediste transferencia a: {expense.payment_details}</span>
+                           )}
+                           {expense.payment_method_type === 'cash' && (
+                              <span className="text-[10px] text-gray-400">Cobro en Efectivo</span>
+                           )}
+                         </div>
+                         <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
+                     </div>
+                     <p className="text-sm text-gray-600 mb-3">A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span></p>
+                     <div className="flex justify-between items-end border-t border-gray-200 pt-2">
+                       <div className="text-sm text-gray-600">
+                         <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
+                       </div>
+                       
+                       {/* BOTONES DE ACCIÓN + BORRAR */}
+                       <div className="flex items-center gap-1">
+                         <ExpenseStatusButtons 
+                           expenseId={expense.id} 
+                           currentStatus={expense.status} 
+                           isDebtor={false} 
+                           isPayer={true}
+                           paymentMethod={expense.payment_method_type}
+                           paymentDetails={expense.payment_details}
+                         />
+                         
+                         <DeleteExpenseButton expenseId={expense.id} />
+                       </div>
 
-                    </div>
-                  </div>
-                ))}
-              </div>
-             )}
+                     </div>
+                   </div>
+                 ))}
+               </div>
+              )}
           </div>
 
           {/* --- BLOQUE 3: HISTORIAL DE PAGOS REALIZADOS --- */}
