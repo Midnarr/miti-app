@@ -29,8 +29,3 @@ body {
   color: rgb(17, 24, 39); /* Esto equivale a text-gray-900 en Tailwind */
   background: rgb(249, 250, 251); /* bg-gray-50 */
 }
-
-/* Simulación rápida de fuente cursiva elegante */
-.font-serif {
-  font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
-}
