@@ -49,7 +49,7 @@ export default function NavbarClient({ user }: { user: any }) {
 
             {/* ITEM: Grupos */}
             <Link 
-              href="/dashboard/groups"
+              href="/groups"
               className={`p-2 rounded-full transition-all ${isActive('/groups') || pathname.includes('/groups/') ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
               title="Grupos"
             >
