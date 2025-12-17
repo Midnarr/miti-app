@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL (Para mostrar mi nombre)
+  // 1. OBTENER MI PERFIL
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
@@ -18,8 +18,7 @@ export default async function DashboardPage() {
 
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
-  // 2. OBTENER GASTOS
-  // Usamos el apodo 'payer' y la notación !payer_id que arreglamos antes
+  // 2. OBTENER TODOS LOS GASTOS
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select(`
@@ -57,16 +56,24 @@ export default async function DashboardPage() {
     friend_name: p.username || p.email?.split("@")[0]
   })) || [];
   
-  // Filtros de Deuda
+  // --- FILTROS DE ESTADO ---
+  
+  // 1. Lo que DEBO y está PENDIENTE
   const iOwe = expenses.filter((e) => e.debtor_email === user.email && e.status !== "paid");
-  const owedToMe = expenses.filter((e) => e.payer_id === user.id);
+  
+  // 2. Lo que ME DEBEN (Seamos o no pagados, mostramos todo aquí o filtramos si prefieres)
+  const owedToMe = expenses.filter((e) => e.payer_id === user.id && e.status !== "paid");
+
+  // 3. 👇 NUEVO: Lo que YO YA PAGUÉ (Historial)
+  const iPaid = expenses.filter((e) => e.debtor_email === user.email && e.status === "paid");
+
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
       
-      {/* HEADER LIMPIO (Solo saludo) */}
+      {/* HEADER */}
       <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
         Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
       </h1>
@@ -78,10 +85,10 @@ export default async function DashboardPage() {
            <CreateExpenseForm currentUserEmail={user.email!} friends={myFriends} />
         </div>
 
-        {/* COLUMNA DERECHA: Resúmenes */}
+        {/* COLUMNA DERECHA: Listados */}
         <div className="md:col-span-2 space-y-8">
           
-          {/* --- SECCIÓN: TIENES QUE PAGAR --- */}
+          {/* --- BLOQUE 1: TIENES QUE PAGAR (PENDIENTES) --- */}
           <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
             <div className="flex items-center gap-3 mb-6">
               <h2 className="font-bold text-xl text-gray-800">🔔 Tienes que pagar</h2>
@@ -91,7 +98,6 @@ export default async function DashboardPage() {
             {iOwe.length === 0 ? <p className="text-gray-500 text-sm">¡Estás al día! 🎉</p> : (
               <div className="space-y-4">
                 {iOwe.map((expense) => {
-                  // Calcular nombre del acreedor
                   // @ts-ignore
                   const lenderName = expense.payer?.username || expense.payer?.email?.split("@")[0] || "Desconocido";
 
@@ -108,7 +114,6 @@ export default async function DashboardPage() {
                         <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                       </div>
                       
-                      {/* Nombre del acreedor */}
                       <p className="text-xs text-gray-500 mb-3">
                         Le debes a: <span className="font-bold text-orange-600">@{lenderName}</span>
                       </p>
@@ -126,7 +131,7 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* --- SECCIÓN: TE DEBEN A TI --- */}
+          {/* --- BLOQUE 2: TE DEBEN A TI --- */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
              <h2 className="font-bold text-xl text-gray-800 mb-6">💰 Te deben a ti</h2>
              {owedToMe.length === 0 ? <p className="text-gray-500 text-sm">Nadie te debe dinero.</p> : (
@@ -152,6 +157,37 @@ export default async function DashboardPage() {
               </div>
              )}
           </div>
+
+          {/* --- BLOQUE 3 (NUEVO): HISTORIAL DE PAGOS REALIZADOS --- */}
+          {iPaid.length > 0 && (
+            <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 opacity-90">
+              <h2 className="font-bold text-xl text-gray-700 mb-6 flex items-center gap-2">
+                ✅ Historial de Pagos <span className="text-xs font-normal text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">{iPaid.length}</span>
+              </h2>
+              
+              <div className="space-y-3">
+                {iPaid.map((expense) => {
+                   // @ts-ignore
+                   const paidToName = expense.payer?.username || expense.payer?.email?.split("@")[0] || "Alguien";
+
+                   return (
+                    <div key={expense.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-100 opacity-75 hover:opacity-100 transition-opacity">
+                      <div>
+                        <p className="font-bold text-gray-700 line-through decoration-gray-400">{expense.description}</p>
+                        <p className="text-xs text-gray-500">
+                          Pagaste a <span className="font-semibold">@{paidToName}</span> • {formatDate(expense.created_at)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-bold text-gray-400 line-through text-sm">${expense.amount}</span>
+                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100">PAGADO</span>
+                      </div>
+                    </div>
+                   )
+                })}
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
