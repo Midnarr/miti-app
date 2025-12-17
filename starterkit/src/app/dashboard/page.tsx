@@ -2,6 +2,7 @@ import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import CreateExpenseForm from "@/components/CreateExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
+import DeleteExpenseButton from "@/components/DeleteExpenseButton";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -186,15 +187,21 @@ export default async function DashboardPage() {
                         <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
                       </div>
                       
-                      {/* BOTONES DE ACCIÓN (ACREEDOR) */}
-                      <ExpenseStatusButtons 
-                        expenseId={expense.id} 
-                        currentStatus={expense.status} 
-                        isDebtor={false} 
-                        isPayer={true}
-                        paymentMethod={expense.payment_method_type}
-                        paymentDetails={expense.payment_details}
-                      />
+                      {/* BOTONES DE ACCIÓN + BORRAR */}
+                      <div className="flex items-center gap-1">
+                        <ExpenseStatusButtons 
+                          expenseId={expense.id} 
+                          currentStatus={expense.status} 
+                          isDebtor={false} 
+                          isPayer={true}
+                          paymentMethod={expense.payment_method_type}
+                          paymentDetails={expense.payment_details}
+                        />
+                        
+                        {/* 👇 AQUÍ AÑADIMOS EL BOTÓN DE BORRAR */}
+                        <DeleteExpenseButton expenseId={expense.id} />
+                      </div>
+
                     </div>
                   </div>
                 ))}
