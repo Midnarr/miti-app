@@ -59,9 +59,6 @@ export default async function GroupsPage() {
             <h1 className="text-3xl font-extrabold text-gray-900">Mis Grupos 👥</h1>
             <p className="text-gray-500 text-sm mt-1">Gestiona tus gastos compartidos</p>
           </div>
-          <Link href="/dashboard" className="text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-            ← Volver al Dashboard
-          </Link>
         </div>
 
         {/* LAYOUT */}
