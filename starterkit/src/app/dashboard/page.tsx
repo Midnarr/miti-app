@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL
+  // 1. OBTENER MI PERFIL (Para mostrar mi nombre)
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
@@ -18,7 +18,13 @@ export default async function DashboardPage() {
 
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
-  // 2. OBTENER TODOS LOS GASTOS
+  // 2. OBTENER MIS MÉTODOS DE PAGO GUARDADOS (Para pasarlos al formulario)
+  const { data: myPaymentMethods } = await supabase
+    .from("user_payment_methods")
+    .select("*")
+    .eq("user_id", user.id);
+
+  // 3. OBTENER GASTOS (Incluyendo datos del pagador y detalles de pago)
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select(`
@@ -34,7 +40,7 @@ export default async function DashboardPage() {
 
   const expenses = allExpenses || [];
 
-  // 3. OBTENER AMIGOS
+  // 4. OBTENER AMIGOS
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
@@ -57,16 +63,9 @@ export default async function DashboardPage() {
   })) || [];
   
   // --- FILTROS DE ESTADO ---
-  
-  // 1. Lo que DEBO y está PENDIENTE
   const iOwe = expenses.filter((e) => e.debtor_email === user.email && e.status !== "paid");
-  
-  // 2. Lo que ME DEBEN (Seamos o no pagados, mostramos todo aquí o filtramos si prefieres)
   const owedToMe = expenses.filter((e) => e.payer_id === user.id && e.status !== "paid");
-
-  // 3. 👇 NUEVO: Lo que YO YA PAGUÉ (Historial)
   const iPaid = expenses.filter((e) => e.debtor_email === user.email && e.status === "paid");
-
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 
@@ -80,15 +79,19 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
         
-        {/* COLUMNA IZQUIERDA: Formulario */}
+        {/* COLUMNA IZQUIERDA: Formulario de Creación */}
         <div className="md:col-span-1 space-y-8">
-           <CreateExpenseForm currentUserEmail={user.email!} friends={myFriends} />
+           <CreateExpenseForm 
+              currentUserEmail={user.email!} 
+              friends={myFriends} 
+              myPaymentMethods={myPaymentMethods || []} // 👈 Pasamos los Alias/CBU aquí
+           />
         </div>
 
         {/* COLUMNA DERECHA: Listados */}
         <div className="md:col-span-2 space-y-8">
           
-          {/* --- BLOQUE 1: TIENES QUE PAGAR (PENDIENTES) --- */}
+          {/* --- BLOQUE 1: TIENES QUE PAGAR --- */}
           <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
             <div className="flex items-center gap-3 mb-6">
               <h2 className="font-bold text-xl text-gray-800">🔔 Tienes que pagar</h2>
@@ -110,6 +113,13 @@ export default async function DashboardPage() {
                             <span className="font-bold text-gray-900">{expense.description}</span>
                           </div>
                           {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
+                          
+                          {/* Mostrar método de pago si es transferencia */}
+                          {expense.payment_method_type === 'transfer' && expense.payment_details && (
+                             <p className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
+                               🏦 Transferir a: <span className="font-mono font-bold">{expense.payment_details}</span>
+                             </p>
+                          )}
                         </div>
                         <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                       </div>
@@ -158,7 +168,7 @@ export default async function DashboardPage() {
              )}
           </div>
 
-          {/* --- BLOQUE 3 (NUEVO): HISTORIAL DE PAGOS REALIZADOS --- */}
+          {/* --- BLOQUE 3: HISTORIAL DE PAGOS --- */}
           {iPaid.length > 0 && (
             <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 opacity-90">
               <h2 className="font-bold text-xl text-gray-700 mb-6 flex items-center gap-2">
