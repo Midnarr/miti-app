@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL (Para mostrar mi nombre)
+  // 1. OBTENER MI PERFIL (Para mostrar mi nombre en el saludo)
   const { data: myProfile } = await supabase
     .from("profiles")
     .select("username")
@@ -18,13 +18,15 @@ export default async function DashboardPage() {
 
   const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
 
-  // 2. OBTENER MIS MÉTODOS DE PAGO GUARDADOS (Para pasarlos al formulario)
+  // 2. OBTENER MIS MÉTODOS DE PAGO GUARDADOS
+  // (Esto es necesario para pasárselo al formulario y que puedas elegir tu CBU al crear un gasto)
   const { data: myPaymentMethods } = await supabase
     .from("user_payment_methods")
     .select("*")
     .eq("user_id", user.id);
 
-  // 3. OBTENER GASTOS (Incluyendo datos del pagador y detalles de pago)
+  // 3. OBTENER GASTOS
+  // Usamos la relación !payer_id para traer datos del creador del gasto
   const { data: allExpenses } = await supabase
     .from("expenses")
     .select(`
@@ -79,12 +81,12 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
         
-        {/* COLUMNA IZQUIERDA: Formulario de Creación */}
+        {/* COLUMNA IZQUIERDA: Formulario */}
         <div className="md:col-span-1 space-y-8">
            <CreateExpenseForm 
               currentUserEmail={user.email!} 
               friends={myFriends} 
-              myPaymentMethods={myPaymentMethods || []} // 👈 Pasamos los Alias/CBU aquí
+              myPaymentMethods={myPaymentMethods || []} 
            />
         </div>
 
@@ -106,22 +108,28 @@ export default async function DashboardPage() {
 
                   return (
                     <div key={expense.id} className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-1">
+                      <div className="flex justify-between items-start mb-2">
                         <div className="flex flex-col gap-1">
+                          {/* Categoría y Descripción */}
                           <div className="flex items-center gap-2">
                             {(expense.groups as any)?.name && <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">#{(expense.groups as any).name}</span>}
                             <span className="font-bold text-gray-900">{expense.description}</span>
                           </div>
-                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
                           
-                          {/* Mostrar método de pago si es transferencia */}
+                          {/* Ticket */}
+                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
+
+                          {/* INFORMACIÓN EXTRA DE PAGO (Si es transferencia) */}
                           {expense.payment_method_type === 'transfer' && expense.payment_details && (
-                             <p className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded w-fit">
-                               🏦 Transferir a: <span className="font-mono font-bold">{expense.payment_details}</span>
-                             </p>
+                             <div className="mt-1 p-2 bg-purple-50 rounded border border-purple-100 text-[11px] text-purple-800">
+                               <p className="font-bold mb-0.5">Datos para transferir:</p>
+                               <p className="font-mono select-all bg-white px-1 rounded border border-purple-100 inline-block">
+                                 {expense.payment_details}
+                               </p>
+                             </div>
                           )}
                         </div>
-                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
+                        <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{formatDate(expense.created_at)}</span>
                       </div>
                       
                       <p className="text-xs text-gray-500 mb-3">
@@ -132,7 +140,16 @@ export default async function DashboardPage() {
                         <div className="text-sm text-gray-600">
                           <span className="bg-orange-100 text-orange-800 font-bold px-2 py-1 rounded-md">Pagar: ${expense.amount}</span>
                         </div>
-                        <ExpenseStatusButtons expenseId={expense.id} currentStatus={expense.status} isDebtor={true} isPayer={false} />
+                        
+                        {/* BOTONES DE ACCIÓN */}
+                        <ExpenseStatusButtons 
+                          expenseId={expense.id} 
+                          currentStatus={expense.status} 
+                          isDebtor={true} 
+                          isPayer={false} 
+                          paymentMethod={expense.payment_method_type}
+                          paymentDetails={expense.payment_details}
+                        />
                       </div>
                     </div>
                   );
@@ -152,6 +169,14 @@ export default async function DashboardPage() {
                         <div className="flex flex-col gap-1">
                           <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
                           {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
+                          
+                          {/* Recordatorio de cómo pediste cobrar */}
+                          {expense.payment_method_type === 'transfer' && (
+                             <span className="text-[10px] text-gray-400">Pediste transferencia a: {expense.payment_details}</span>
+                          )}
+                          {expense.payment_method_type === 'cash' && (
+                             <span className="text-[10px] text-gray-400">Cobro en Efectivo</span>
+                          )}
                         </div>
                         <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
                     </div>
@@ -160,7 +185,16 @@ export default async function DashboardPage() {
                       <div className="text-sm text-gray-600">
                         <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
                       </div>
-                      <ExpenseStatusButtons expenseId={expense.id} currentStatus={expense.status} isDebtor={false} isPayer={true} />
+                      
+                      {/* BOTONES DE ACCIÓN (ACREEDOR) */}
+                      <ExpenseStatusButtons 
+                        expenseId={expense.id} 
+                        currentStatus={expense.status} 
+                        isDebtor={false} 
+                        isPayer={true}
+                        paymentMethod={expense.payment_method_type}
+                        paymentDetails={expense.payment_details}
+                      />
                     </div>
                   </div>
                 ))}
@@ -168,7 +202,7 @@ export default async function DashboardPage() {
              )}
           </div>
 
-          {/* --- BLOQUE 3: HISTORIAL DE PAGOS --- */}
+          {/* --- BLOQUE 3: HISTORIAL DE PAGOS REALIZADOS --- */}
           {iPaid.length > 0 && (
             <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 opacity-90">
               <h2 className="font-bold text-xl text-gray-700 mb-6 flex items-center gap-2">

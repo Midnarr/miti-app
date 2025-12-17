@@ -164,7 +164,7 @@ export default function CreateExpenseForm({
                         </select>
                     ) : (
                         <p className="text-xs text-red-500">
-                            No tienes alias guardados. <a href="/dashboard/settings" className="underline font-bold">Ir a Configuración</a>
+                            No tienes alias guardados. <a href="/settings" className="underline font-bold">Ir a Configuración</a>
                         </p>
                     )}
                 </div>
