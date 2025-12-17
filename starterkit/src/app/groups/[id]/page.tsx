@@ -2,7 +2,7 @@ import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import AddMemberForm from "@/components/AddMemberForm";
 import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
-// import GroupExpensesList from "@/components/GroupExpensesList"; // Descomenta si ya tienes este componente
+// import GroupExpensesList from "@/components/GroupExpensesList"; 
 
 export default async function GroupPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -21,19 +21,26 @@ export default async function GroupPage({ params }: { params: { id: string } }) 
 
   if (!group) return <div className="p-8 text-center text-gray-500">Grupo no encontrado</div>;
 
-  // ... dentro de src/app/groups/[id]/page.tsx
-
-  // 2. Obtener miembros
-  const { data: membersRel } = await supabase
+  // 2. 👇 LÓGICA CORREGIDA PARA TU TABLA
+  // Primero obtenemos los emails de la tabla group_members
+  const { data: memberRows } = await supabase
     .from("group_members")
-    // 👇 CAMBIO AQUÍ: Reemplaza "user_id" por "profile_id" (o como se llame en tu tabla)
-    .select("profile_id, profiles(email, username)") 
+    .select("member_email") // ✅ Usamos tu columna real
     .eq("group_id", groupId);
 
-  const memberObjects = membersRel?.map((m: any) => ({
-    // 👇 CAMBIO AQUÍ TAMBIÉN: Usa el nombre real de tu columna
-    id: m.profile_id, 
-    name: m.profiles?.email || "Usuario"
+  const emails = memberRows?.map((row) => row.member_email) || [];
+
+  // Ahora buscamos los IDs reales de esos usuarios en la tabla 'profiles'
+  // Esto es necesario para que el formulario sepa sus IDs
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, email, username")
+    .in("email", emails);
+
+  // Mapeamos a la estructura que necesita el formulario
+  const memberObjects = profiles?.map((p) => ({
+    id: p.id,
+    name: p.email // O p.username si prefieres
   })) || [];
 
   // 3. Obtener mis amigos (Para el formulario de agregar miembro)
@@ -47,12 +54,12 @@ export default async function GroupPage({ params }: { params: { id: string } }) 
       f.requester_id === user.id ? f.receiver_id : f.requester_id
   ) || [];
 
-  const { data: profiles } = await supabase
+  const { data: friendProfiles } = await supabase
     .from("profiles")
     .select("id, email, username")
     .in("id", friendIds);
 
-  const myFriends = profiles?.map(p => ({
+  const myFriends = friendProfiles?.map(p => ({
     id: p.id,
     friend_email: p.email,
     friend_name: p.username || p.email?.split("@")[0]
@@ -77,14 +84,15 @@ export default async function GroupPage({ params }: { params: { id: string } }) 
         <div className="lg:col-span-1 space-y-8">
           <div className="sticky top-8 space-y-8">
              
-             {/* 👇 AQUÍ ESTABA EL ERROR: Usamos .map() para pasar solo los textos */}
+             {/* Componente para agregar nuevos miembros */}
              <AddMemberForm 
                 groupId={groupId} 
                 friends={myFriends} 
-                existingEmails={memberObjects.map(m => m.name)} 
+                // 👇 CORRECCIÓN ERROR TYPESCRIPT: Pasamos solo los emails (strings)
+                existingEmails={emails} 
              />
 
-             {/* 👇 Este componente SÍ necesita los objetos completos */}
+             {/* Componente para crear gasto */}
              <CreateGroupExpenseForm 
                 groupId={groupId} 
                 members={memberObjects} 
