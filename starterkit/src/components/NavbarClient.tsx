@@ -17,7 +17,7 @@ export default function NavbarClient({ user, avatarUrl }: { user: any, avatarUrl
         
         {/* 1. IZQUIERDA: Logo Moderno */}
         <div className="flex-shrink-0 w-10">
-          <Link href="/dashboard" className="text-2xl font-black tracking-tighter text-indigo-600 hover:opacity-80 transition-opacity">
+          <Link href="/" className="text-2xl font-black tracking-tighter text-indigo-600 hover:opacity-80 transition-opacity">
             Miti.
           </Link>
         </div>
