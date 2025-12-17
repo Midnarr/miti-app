@@ -1,155 +1,199 @@
 import { createClient } from "@/libs/supabase/server";
-import { redirect } from "next/navigation";
-import CreateExpenseForm from "@/components/CreateExpenseForm";
+import { notFound, redirect } from "next/navigation";
+import CreateGroupExpenseForm from "@/components/CreateGroupExpenseForm";
 import ExpenseStatusButtons from "@/components/ExpenseStatusButtons";
-import DeleteExpenseButton from "@/components/DeleteExpenseButton";
+import AddMemberForm from "@/components/AddMemberForm";
+import GroupMemberList from "@/components/GroupMemberList"; 
+import DeleteGroupButton from "@/components/DeleteGroupButton"; // 👈 1. IMPORTAR
+import Link from "next/link";
 
-export default async function DashboardPage() {
+export default async function GroupDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const params = await props.params;
+  const groupId = params.id;
+  
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
 
-  // 1. OBTENER MI PERFIL (Para mostrar mi nombre en el saludo)
-  const { data: myProfile } = await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", user.id)
+  // 1. GRUPO
+  const { data: group, error: groupError } = await supabase
+    .from("groups")
+    .select("*")
+    .eq("id", groupId)
     .single();
 
-  const displayUsername = myProfile?.username ? `@${myProfile.username}` : user.email?.split("@")[0];
+  if (groupError || !group) return notFound();
 
-  // 2. OBTENER MIS MÉTODOS DE PAGO GUARDADOS
-  // (Esto es necesario para pasárselo al formulario y que puedas elegir tu CBU al crear un gasto)
-  const { data: myPaymentMethods } = await supabase
-    .from("user_payment_methods")
-    .select("*")
-    .eq("user_id", user.id);
+  // 2. MIEMBROS (Obtener emails)
+  const { data: membersData } = await supabase
+    .from("group_members")
+    .select("member_email") 
+    .eq("group_id", groupId);
 
-  // 3. OBTENER GASTOS
-  // Usamos la relación !payer_id para traer datos del creador del gasto
-  const { data: allExpenses } = await supabase
-    .from("expenses")
-    .select(`
-      *,
-      groups(name),
-      payer:profiles!payer_id (
-        username,
-        email
-      )
-    `)
-    .or(`payer_id.eq.${user.id},debtor_email.eq.${user.email}`)
-    .order("created_at", { ascending: false });
+  const memberEmails = membersData?.map(m => m.member_email) || [];
 
-  const expenses = allExpenses || [];
+  // 🚨 SEGURIDAD
+  const currentUserEmail = user.email!.toLowerCase().trim();
+  const isMember = memberEmails.some(email => email.toLowerCase().trim() === currentUserEmail);
+  if (!isMember) return notFound();
 
-  // 4. OBTENER AMIGOS
+  // 👮‍♂️ VERIFICAR SI ES DUEÑO DEL GRUPO
+  const isOwner = group.created_by === user.id;
+
+  // 3. OBTENER PERFILES COMPLETOS
+  const { data: memberProfiles } = await supabase
+    .from("profiles")
+    .select("id, email, username")
+    .in("email", memberEmails);
+
+  const fullMembers = memberEmails.map(email => {
+    const profile = memberProfiles?.find(p => p.email === email);
+    return {
+      email: email,
+      username: profile?.username || email.split("@")[0],
+      id: profile?.id || "unknown" 
+    };
+  });
+
+  const membersForForm = fullMembers.map(m => ({
+    id: m.id,
+    name: m.email
+  }));
+
+  // 4. AMIGOS
   const { data: rawFriends } = await supabase
     .from("friends")
     .select("*")
     .eq("status", "accepted")
     .or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
-  const friendIds = rawFriends?.map(f => 
-      f.requester_id === user.id ? f.receiver_id : f.requester_id
-  ) || [];
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, email, username")
-    .in("id", friendIds);
-
+  const friendIds = rawFriends?.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id) || [];
+  const { data: profiles } = await supabase.from("profiles").select("id, email, username").in("id", friendIds);
+  
   const myFriends = profiles?.map(p => ({
     id: p.id,
     friend_email: p.email,
     friend_name: p.username || p.email?.split("@")[0]
   })) || [];
-  
-  // --- FILTROS DE ESTADO ---
-  const iOwe = expenses.filter((e) => e.debtor_email === user.email && e.status !== "paid");
-  const owedToMe = expenses.filter((e) => e.payer_id === user.id && e.status !== "paid");
-  const iPaid = expenses.filter((e) => e.debtor_email === user.email && e.status === "paid");
 
-  const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  // 5. MÉTODOS DE PAGO
+  const { data: myPaymentMethods } = await supabase
+    .from("user_payment_methods")
+    .select("*")
+    .eq("user_id", user.id);
+
+  // 6. GASTOS
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false });
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
       
-      {/* HEADER */}
-      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
-        Hola, <span className="text-indigo-600">{displayUsername}</span> 👋
-      </h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+      {/* CABECERA */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-indigo-100 flex flex-col lg:flex-row gap-8">
         
-        {/* COLUMNA IZQUIERDA: Formulario */}
-        <div className="md:col-span-1 space-y-8">
-           <CreateExpenseForm 
-              currentUserEmail={user.email!} 
-              friends={myFriends} 
-              myPaymentMethods={myPaymentMethods || []} 
-           />
+        {/* Lado Izquierdo: Título y Lista de Miembros */}
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Link href="/dashboard/groups" className="text-gray-400 hover:text-indigo-600 transition-colors">←</Link>
+                <h1 className="text-3xl font-bold text-gray-900">{group.name}</h1>
+              </div>
+
+              {/* 👇 2. BOTÓN DE BORRAR (SOLO SI ES DUEÑO) */}
+              {isOwner && (
+                <DeleteGroupButton groupId={groupId} />
+              )}
+          </div>
+          
+          <GroupMemberList 
+            groupId={groupId}
+            members={fullMembers}
+            currentUserId={user.id}
+            creatorId={group.created_by}
+          />
         </div>
 
-        {/* COLUMNA DERECHA: Listados */}
-        <div className="md:col-span-2 space-y-8">
-          
-          {/* --- BLOQUE 1: TIENES QUE PAGAR --- */}
-          <div className="bg-orange-50/50 p-6 rounded-xl shadow-sm border border-orange-100">
-            <div className="flex items-center gap-3 mb-6">
-              <h2 className="font-bold text-xl text-gray-800">🔔 Tienes que pagar</h2>
-              {iOwe.length > 0 && <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">{iOwe.length} nuevos</span>}
-            </div>
+        {/* Lado Derecho: Resumen Total */}
+        <div className="flex flex-col items-end justify-start">
+           <div className="bg-indigo-50 px-6 py-4 rounded-xl text-center">
+              <span className="block text-3xl font-bold text-indigo-700">{expenses?.length || 0}</span>
+              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Gastos Totales</span>
+           </div>
+        </div>
+      </div>
 
-            {iOwe.length === 0 ? <p className="text-gray-500 text-sm">¡Estás al día! 🎉</p> : (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* COLUMNA IZQUIERDA: Formularios */}
+        <div className="lg:col-span-1">
+          <div className="sticky top-8 space-y-8">
+            <AddMemberForm groupId={groupId} friends={myFriends} existingEmails={memberEmails} />
+            <CreateGroupExpenseForm 
+                groupId={groupId} 
+                members={membersForForm} 
+                myPaymentMethods={myPaymentMethods || []} 
+            />
+          </div>
+        </div>
+
+        {/* COLUMNA DERECHA: Lista de Gastos */}
+        <div className="lg:col-span-2 space-y-4">
+           <h2 className="font-bold text-xl text-gray-800">Historial</h2>
+           {!expenses || expenses.length === 0 ? (
+              <div className="bg-white p-12 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
+                <p className="mb-2 text-4xl">💸</p>
+                <p>No hay gastos registrados aún.</p>
+              </div>
+            ) : (
               <div className="space-y-4">
-                {iOwe.map((expense) => {
-                  // @ts-ignore
-                  const lenderName = expense.payer?.username || expense.payer?.email?.split("@")[0] || "Desconocido";
+                {expenses.map((expense) => {
+                  const expenseDebtor = expense.debtor_email.toLowerCase().trim();
+                  const isMePayer = expense.payer_id === user.id;
+                  const isMeDebtor = expenseDebtor === currentUserEmail;
+
+                  let labelText = isMePayer ? "Le cobraste a:" : (isMeDebtor ? "Te cobraron a:" : "Le cobraron a:");
+                  let valueText = isMePayer ? (isMeDebtor ? "Ti mismo" : expense.debtor_email) : (isMeDebtor ? "Ti" : expense.debtor_email);
+                  
+                  const debtorProfile = memberProfiles?.find(p => p.email === expenseDebtor);
+                  const debtorName = debtorProfile?.username ? `@${debtorProfile.username}` : valueText;
+
+                  let borderColor = "border-gray-100";
+                  if (expense.status === 'proposed') borderColor = "border-indigo-200";
+                  if (expense.status === 'pending') borderColor = "border-orange-200";
+                  if (expense.status === 'paid') borderColor = "border-green-200";
 
                   return (
-                    <div key={expense.id} className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex flex-col gap-1">
-                          {/* Categoría y Descripción */}
-                          <div className="flex items-center gap-2">
-                            {(expense.groups as any)?.name && <span className="text-[10px] font-bold uppercase text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">#{(expense.groups as any).name}</span>}
-                            <span className="font-bold text-gray-900">{expense.description}</span>
-                          </div>
-                          
-                          {/* Ticket */}
-                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
-
-                          {/* INFORMACIÓN EXTRA DE PAGO (Si es transferencia) */}
-                          {expense.payment_method_type === 'transfer' && expense.payment_details && (
-                             <div className="mt-1 p-2 bg-purple-50 rounded border border-purple-100 text-[11px] text-purple-800">
-                               <p className="font-bold mb-0.5">Datos para transferir:</p>
-                               <p className="font-mono select-all bg-white px-1 rounded border border-purple-100 inline-block">
-                                 {expense.payment_details}
-                               </p>
-                             </div>
-                          )}
+                    <div key={expense.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${borderColor} flex justify-between items-center transition-all hover:shadow-md`}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-gray-900">{expense.description}</p>
+                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 hover:bg-blue-100 transition-colors">📎 Ticket</a>}
                         </div>
-                        <span className="text-xs text-gray-400 font-medium whitespace-nowrap ml-2">{formatDate(expense.created_at)}</span>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {labelText} <span className="font-medium text-indigo-600">{debtorName}</span>
+                        </p>
+                        {expense.payment_method_type === 'transfer' && isMeDebtor && (
+                             <p className="text-[10px] mt-1 text-purple-600 bg-purple-50 px-2 py-0.5 rounded w-fit">
+                               🏦 Pagar a CBU: {expense.payment_details}
+                             </p>
+                        )}
                       </div>
-                      
-                      <p className="text-xs text-gray-500 mb-3">
-                        Le debes a: <span className="font-bold text-orange-600">@{lenderName}</span>
-                      </p>
-
-                      <div className="flex justify-between items-end border-t border-gray-100 pt-3">
-                        <div className="text-sm text-gray-600">
-                          <span className="bg-orange-100 text-orange-800 font-bold px-2 py-1 rounded-md">Pagar: ${expense.amount}</span>
-                        </div>
-                        
-                        {/* BOTONES DE ACCIÓN */}
+                      <div className="flex flex-col items-end gap-2">
+                        <span className="block font-bold text-lg text-gray-800">${expense.amount}</span>
                         <ExpenseStatusButtons 
-                          expenseId={expense.id} 
-                          currentStatus={expense.status} 
-                          isDebtor={true} 
-                          isPayer={false} 
-                          paymentMethod={expense.payment_method_type}
-                          paymentDetails={expense.payment_details}
+                            expenseId={expense.id} 
+                            currentStatus={expense.status} 
+                            isDebtor={isMeDebtor} 
+                            isPayer={isMePayer}
+                            paymentMethod={expense.payment_method_type}
+                            paymentDetails={expense.payment_details}
                         />
                       </div>
                     </div>
@@ -157,89 +201,6 @@ export default async function DashboardPage() {
                 })}
               </div>
             )}
-          </div>
-
-          {/* --- BLOQUE 2: TE DEBEN A TI --- */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-             <h2 className="font-bold text-xl text-gray-800 mb-6">💰 Te deben a ti</h2>
-             {owedToMe.length === 0 ? <p className="text-gray-500 text-sm">Nadie te debe dinero.</p> : (
-              <div className="space-y-4">
-                {owedToMe.map((expense) => (
-                  <div key={expense.id} className="p-4 rounded-lg border border-gray-100 hover:shadow-md transition-shadow bg-gray-50/50">
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-bold text-gray-900 text-lg">{expense.description}</span>
-                          {expense.receipt_url && <a href={expense.receipt_url} target="_blank" className="inline-flex items-center gap-1 w-fit text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">📎 Ver Ticket</a>}
-                          
-                          {/* Recordatorio de cómo pediste cobrar */}
-                          {expense.payment_method_type === 'transfer' && (
-                             <span className="text-[10px] text-gray-400">Pediste transferencia a: {expense.payment_details}</span>
-                          )}
-                          {expense.payment_method_type === 'cash' && (
-                             <span className="text-[10px] text-gray-400">Cobro en Efectivo</span>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-400 font-medium">{formatDate(expense.created_at)}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-3">A: <span className="font-semibold text-indigo-600">{expense.debtor_email}</span></p>
-                    <div className="flex justify-between items-end border-t border-gray-200 pt-2">
-                      <div className="text-sm text-gray-600">
-                        <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-1 rounded-md">Te debe: ${expense.amount}</span>
-                      </div>
-                      
-                      {/* BOTONES DE ACCIÓN + BORRAR */}
-                      <div className="flex items-center gap-1">
-                        <ExpenseStatusButtons 
-                          expenseId={expense.id} 
-                          currentStatus={expense.status} 
-                          isDebtor={false} 
-                          isPayer={true}
-                          paymentMethod={expense.payment_method_type}
-                          paymentDetails={expense.payment_details}
-                        />
-                        
-                        {/* 👇 AQUÍ AÑADIMOS EL BOTÓN DE BORRAR */}
-                        <DeleteExpenseButton expenseId={expense.id} />
-                      </div>
-
-                    </div>
-                  </div>
-                ))}
-              </div>
-             )}
-          </div>
-
-          {/* --- BLOQUE 3: HISTORIAL DE PAGOS REALIZADOS --- */}
-          {iPaid.length > 0 && (
-            <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 opacity-90">
-              <h2 className="font-bold text-xl text-gray-700 mb-6 flex items-center gap-2">
-                ✅ Historial de Pagos <span className="text-xs font-normal text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">{iPaid.length}</span>
-              </h2>
-              
-              <div className="space-y-3">
-                {iPaid.map((expense) => {
-                   // @ts-ignore
-                   const paidToName = expense.payer?.username || expense.payer?.email?.split("@")[0] || "Alguien";
-
-                   return (
-                    <div key={expense.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-100 opacity-75 hover:opacity-100 transition-opacity">
-                      <div>
-                        <p className="font-bold text-gray-700 line-through decoration-gray-400">{expense.description}</p>
-                        <p className="text-xs text-gray-500">
-                          Pagaste a <span className="font-semibold">@{paidToName}</span> • {formatDate(expense.created_at)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="block font-bold text-gray-400 line-through text-sm">${expense.amount}</span>
-                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100">PAGADO</span>
-                      </div>
-                    </div>
-                   )
-                })}
-              </div>
-            </div>
-          )}
-
         </div>
       </div>
     </div>
