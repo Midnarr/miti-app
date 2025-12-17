@@ -62,7 +62,7 @@ export const metadata: Metadata = {
 
   // 👇 AQUÍ PONES EL CÓDIGO QUE TE DE GOOGLE SEARCH CONSOLE
   verification: {
-    google: "U9Bhy5l-ftFGqBKKazwZPbDMx1b9ROsbS6aSVz5YN04", 
+    google: "AwgXOLTc75DZS_TGMna8WFHTCsQf0ZPLQ-uvsTjYaoA",
   },
 };
 
