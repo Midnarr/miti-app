@@ -2,39 +2,51 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-// ⚠️ IMPORTANTE: Usamos la librería base de JS, no la de Next.js helper
-// porque necesitamos usar la SERVICE_ROLE_KEY para tener permisos de admin.
 export async function inviteUserToApp(email: string) {
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY! // Asegúrate de tener esto en tu .env.local
-  );
+  console.log("🚀 Iniciando invitación para:", email);
 
-  // 1. Verificamos si el usuario ya existe en Auth
-  // (Listamos usuarios filtrando por email - requiere permisos admin)
-  const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-  const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("❌ ERROR: Faltan variables de entorno (URL o SERVICE_ROLE_KEY)");
+    return { success: false, message: "Error de configuración en el servidor" };
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  // 1. Verificamos si existe
+  const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+  
+  if (listError) {
+    console.error("❌ Error listando usuarios:", listError.message);
+    return { success: false, message: "Error verificando usuario" };
+  }
+
+  const existingUser = listData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
 
   if (existingUser) {
-    // Si ya existe, no enviamos invitación de registro, solo retornamos.
-    // (Tu lógica actual ya lo agregará al grupo si existe en profiles)
+    console.log("⚠️ El usuario ya existe:", existingUser.id);
     return { success: true, message: "Usuario ya registrado" };
   }
 
-  // 2. Si NO existe, le mandamos el email de invitación
-  const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    // Opcional: Puedes pasar metadata inicial si quieres
-    data: { 
-        username: email.split("@")[0] // Username temporal
-    },
-    // Opcional: A dónde redirige al hacer clic en el email
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` 
+  // 2. Enviamos invitación
+  console.log("📧 Enviando email a Supabase...");
+  
+  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback` 
   });
 
   if (error) {
-    console.error("Error invitando:", error);
+    console.error("❌ Error Supabase Invite:", error.message);
     return { success: false, message: error.message };
   }
 
+  console.log("✅ Invitación enviada con éxito:", data);
   return { success: true, message: "Invitación enviada" };
 }
