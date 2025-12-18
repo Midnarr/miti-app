@@ -2,7 +2,7 @@ import { createClient } from "@/libs/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { headers } from "next/headers";
-import Image from "next/image"; // 👈 1. Importamos Image
+import Image from "next/image"; 
 
 export default async function RegisterPage(props: {
   searchParams: Promise<{ success?: string; message?: string }>;
@@ -20,7 +20,7 @@ export default async function RegisterPage(props: {
     "use server";
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
-    const username = formData.get("username") as string;
+    const rawUsername = formData.get("username") as string;
     
     const headersList = await headers();
     const host = headersList.get("host");
@@ -29,16 +29,33 @@ export default async function RegisterPage(props: {
 
     const supabase = await createClient();
 
-    if (!username || username.length < 3) {
+    // 1. LIMPIEZA: Estandarizamos el usuario (minúsculas y sin espacios)
+    const cleanUsername = rawUsername ? rawUsername.trim().toLowerCase().replace(/\s/g, "") : "";
+
+    if (cleanUsername.length < 3) {
       return redirect("/register?message=El usuario debe tener al menos 3 letras.");
     }
 
+    // 👈 NUEVO: VERIFICACIÓN DE DISPONIBILIDAD
+    // Consultamos si ya existe alguien con ese username en la tabla profiles
+    const { data: existingUser } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("username", cleanUsername)
+      .maybeSingle();
+
+    if (existingUser) {
+      return redirect(`/register?message=El usuario @${cleanUsername} ya está en uso 😢`);
+    }
+
+    // 2. REGISTRO (Si pasa la verificación)
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${currentOrigin}/auth/callback`,
-        data: { username },
+        // Importante: Enviamos el 'cleanUsername' para que el Trigger lo use
+        data: { username: cleanUsername },
       },
     });
 
@@ -53,7 +70,7 @@ export default async function RegisterPage(props: {
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
       <div className="w-full max-w-md space-y-8 bg-white p-8 md:p-10 shadow-xl rounded-2xl border border-gray-100">
         
-        {/* 👇 2. LOGO (Se ve siempre, antes de la lógica de éxito/formulario) */}
+        {/* LOGO */}
         <div className="flex justify-center mb-6">
           <Link href="/">
             <div className="relative w-24 h-24 hover:scale-105 transition-transform duration-300">
